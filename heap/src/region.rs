@@ -39,7 +39,7 @@ unsafe impl Send for Region {}
 unsafe impl Sync for Region {}
 
 impl Region {
-    fn new(size: usize) -> Result<Self, AllocError> {
+    pub fn new(size: usize) -> Result<Self, AllocError> {
         let size = size as u64;
         let mut ptr = unsafe {
             libc::mmap(
@@ -63,6 +63,10 @@ impl Region {
         })
     }
 
+    pub fn base(&self) -> *mut u8 {
+        self.base.as_ptr()
+    }
+
     pub fn size(&self) -> usize {
         self.size
     }
@@ -72,9 +76,5 @@ impl Region {
         let addr = ptr as usize;
 
         addr >= base && addr < base + self.size
-    }
-
-    pub fn base(&self) -> *mut u8 {
-        self.base.as_ptr()
     }
 }
