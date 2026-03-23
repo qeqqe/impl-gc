@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{error::Error, marker::PhantomPinned};
+use std::{error::Error, ptr::NonNull};
 
 #[derive(Debug)]
 pub struct AllocError {}
@@ -21,15 +21,60 @@ impl Error for AllocError {
 }
 
 pub struct Region {
-    mem_chunk: Vec<u8>,
-    _pin: PhantomPinned,
+    base: NonNull<u8>,
+    size: usize,
+    commited: usize,
 }
+
+impl Drop for Region {
+    fn drop(&mut self) {
+        unsafe {
+            libc::munmap(self.base.as_ptr() as *mut libc::c_void, self.size);
+        }
+    }
+}
+
+// SAFTEY: Region has it's own exclusive ownership of it's memory range
+unsafe impl Send for Region {}
+unsafe impl Sync for Region {}
 
 impl Region {
     fn new(size: usize) -> Result<Self, AllocError> {
+        let size = size as u64;
+        let mut ptr = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                size as libc::size_t,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+                -1,
+                0,
+            )
+        };
+        if ptr == libc::MAP_FAILED {
+            return Err(AllocError {});
+        }
+
         Ok(Self {
-            mem_chunk: Vec::with_capacity(size),
-            _pin: PhantomPinned,
+            base: NonNull::new(&mut ptr as *mut *mut libc::c_void as *mut u8)
+                .expect("Couldn't create a memory block"),
+            size: size as usize,
+            commited: size as usize,
         })
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    pub fn contains(&self, ptr: *const u8) -> bool {
+        let base = self.base.as_ptr() as usize;
+        let addr = ptr as usize;
+
+        addr >= base && addr < base + self.size
+    }
+
+    pub fn base(&self) -> *mut u8 {
+        self.base.as_ptr()
     }
 }
