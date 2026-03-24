@@ -41,7 +41,7 @@ unsafe impl Sync for Region {}
 impl Region {
     pub fn new(size: usize) -> Result<Self, AllocError> {
         let size = size as u64;
-        let mut ptr = unsafe {
+        let ptr = unsafe {
             libc::mmap(
                 std::ptr::null_mut(),
                 size as libc::size_t,
@@ -56,8 +56,7 @@ impl Region {
         }
 
         Ok(Self {
-            base: NonNull::new(&mut ptr as *mut *mut libc::c_void as *mut u8)
-                .expect("Couldn't create a memory block"),
+            base: NonNull::new(ptr as *mut u8).expect("mmap returned null?"),
             size: size as usize,
             commited: size as usize,
         })
@@ -76,5 +75,29 @@ impl Region {
         let addr = ptr as usize;
 
         addr >= base && addr < base + self.size
+    }
+
+    pub fn reset(&mut self) -> Result<(), AllocError> {
+        unsafe {
+            libc::munmap(self.base.as_ptr() as *mut libc::c_void, self.size);
+        }
+        let ptr = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                self.size as libc::size_t,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+                -1,
+                0,
+            )
+        };
+
+        if ptr == libc::MAP_FAILED {
+            return Err(AllocError {});
+        }
+
+        self.base = NonNull::new(ptr as *mut u8).expect("mmap returned null?");
+
+        Ok(())
     }
 }
