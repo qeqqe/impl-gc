@@ -1,4 +1,5 @@
 pub mod bump;
+pub mod freelist;
 pub mod region;
 
 #[allow(dead_code, unused_allocation, unused_mut, unused_must_use)]
