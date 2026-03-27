@@ -23,57 +23,64 @@ impl<'a> FreeListAllocator<'a> {
             freeList: None,
         }
     }
-
     pub fn alloc(&mut self, size: usize, align: usize) -> Option<*mut u8> {
         let mut prev: Option<NonNull<FreeBlock>> = None;
-        let mut curr = self.freeList;
+        let mut curr: Option<NonNull<FreeBlock>> = self.freeList;
+
         while let Some(mut block_nn) = curr {
             let block = unsafe { block_nn.as_mut() };
 
             let block_addr = block_nn.as_ptr() as usize;
 
-            // CHECK: how far do we need to push forward to satisfy alignment
+            /*
+             * align with 2^align
+             * Example: (block_addr = 11, align = 4)
+             * (1011 + 0100) & !(0011)
+             *  1110 & 1100
+             *  = 1100
+             */
             let aligned_addr = (block_addr + align - 1) & !(align - 1);
-            let alignment_waste = aligned_addr - block_addr;
-            let total_needed = alignment_waste + size;
+            let alignment_wasted = aligned_addr - block_addr;
+            let total_needed = alignment_wasted + size;
 
             if block.size >= total_needed {
-                // ── UNLINK this block from the list ──────────────────────
                 let next = block.next;
 
                 match prev {
-                    None => self.freeList = next,                     // removing head
-                    Some(mut p) => unsafe { p.as_mut().next = next }, // removing mid/tail
+                    // before: prev(FreeBlock) -> curr (FreeBlock) (sufficient for `size`) -> next (FreeBlock)
+                    // after: prev (FreeBlock) -> next (FreeBlock)
+                    Some(mut p) => unsafe { p.as_mut().next = next },
+
+                    // before: curr (FreeBlock) (sufficient for `size`) -> next (FreeBlock)
+                    // after: next (curr) (FreeBlock)
+                    None => self.freeList = next,
                 }
 
-                // ── SPLIT if there's enough leftover for a new FreeBlock ──
-                let leftover = block.size - total_needed;
-                let min_block = std::mem::size_of::<FreeBlock>();
+                let min_block_size = std::mem::size_of::<FreeBlock>();
+                let leftover = total_needed - block.size;
 
-                if leftover >= min_block {
-                    // carve a new FreeBlock out of the tail of this block
+                if leftover <= min_block_size {
                     let new_block_addr = (aligned_addr + size) as *mut FreeBlock;
                     unsafe {
+                        // before: new_block (FreeBlock) -> curr (FreeBlock)
                         new_block_addr.write(FreeBlock {
                             base: new_block_addr as usize,
                             size: leftover,
-                            next: self.freeList, // prepend to free list
+                            next: self.freeList,
                         });
+                        // after: cur (new_block) (FreeBlock) -> next (cur) (FreeBlock)
                         self.freeList = NonNull::new(new_block_addr);
                     }
                 }
-
                 return Some(aligned_addr as *mut u8);
             }
 
-            // advance: prev = curr, curr = curr.next
             prev = curr;
             curr = block.next;
         }
 
         None
     }
-
     pub fn free(&mut self, ptr: *mut u8, size: usize) {
         todo!()
     }
