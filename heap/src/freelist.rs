@@ -82,7 +82,23 @@ impl<'a> FreeListAllocator<'a> {
         None
     }
     pub fn free(&mut self, ptr: *mut u8, size: usize) {
-        todo!()
+        /*
+         * intuition for now:
+         * just write at the pointer with a `FreeBlock` and put it in the self.freeList
+         * new_freeblock.next => self.freeList
+         * self.freeList.next => new_freeblock
+         */
+
+        let new_free_block = ptr as *mut FreeBlock;
+
+        unsafe {
+            new_free_block.write(FreeBlock {
+                base: new_free_block as usize,
+                size,
+                next: self.freeList,
+            });
+        }
+        self.freeList = NonNull::new(new_free_block);
     }
 
     fn coalesec(&mut self) {
