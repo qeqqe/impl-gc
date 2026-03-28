@@ -1,4 +1,4 @@
-use crate::region::{AllocError, Region};
+use crate::heap::region::{AllocError, Region};
 use std::ptr::NonNull;
 
 pub struct BumpAllocator<'a> {

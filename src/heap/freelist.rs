@@ -1,6 +1,6 @@
-use std::{collections::LinkedList, ptr::NonNull};
+use std::ptr::NonNull;
 
-use crate::region::Region;
+use crate::heap::region::Region;
 
 #[derive(Default)]
 #[repr(C)]
@@ -87,8 +87,6 @@ impl<'a> FreeListAllocator<'a> {
     pub fn free(&mut self, ptr: *mut u8, size: usize) {
         /*
          * intuition for now:
-         * just write at the pointer with a `FreeBlock` and put it in the self.freeList
-         *
          * Traverse the FreeBlock and find the appropriate place for the FreeBlock to be
          * which is important for `coalesce` to work.
          */
