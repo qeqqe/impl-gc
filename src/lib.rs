@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_allocation, unused_assignments)]
+
 mod heap;
 mod object;
 

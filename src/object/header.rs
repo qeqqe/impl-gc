@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 
-use crate::object::type_descriptor::TypeDescriptor;
+use crate::object::descriptor::TypeDescriptor;
 
 #[derive(Clone, Copy, PartialEq)]
 #[repr(u8)]
@@ -25,8 +25,8 @@ impl GcHeader {
         unsafe { (self as *const GcHeader).add(1) as *mut u8 }
     }
 
-    pub unsafe fn from_object_ptr(obj: *mut u8) -> *mut GcHeader {
-        (obj as *mut GcHeader).sub(1)
+    pub fn from_object_ptr(obj: *mut u8) -> *mut GcHeader {
+        unsafe { (obj as *mut GcHeader).sub(1) }
     }
 
     pub fn is_marked(&self) -> bool {

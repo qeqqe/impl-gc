@@ -12,20 +12,19 @@ struct FreeBlock {
 
 pub struct FreeListAllocator<'a> {
     region: &'a mut Region,
-    freeList: Option<NonNull<FreeBlock>>,
+    free_list: Option<NonNull<FreeBlock>>,
 }
 
 impl<'a> FreeListAllocator<'a> {
     pub fn new(region: &'a mut Region) -> Self {
-        let base = region.base();
         Self {
             region,
-            freeList: None,
+            free_list: None,
         }
     }
     pub fn alloc(&mut self, size: usize, align: usize) -> Option<*mut u8> {
         let mut prev: Option<NonNull<FreeBlock>> = None;
-        let mut curr: Option<NonNull<FreeBlock>> = self.freeList;
+        let mut curr: Option<NonNull<FreeBlock>> = self.free_list;
 
         while let Some(mut block_nn) = curr {
             let block = unsafe { block_nn.as_mut() };
@@ -53,7 +52,7 @@ impl<'a> FreeListAllocator<'a> {
 
                     // before: curr (FreeBlock) (sufficient for `size`) -> next (FreeBlock)
                     // after: next (curr) (FreeBlock)
-                    None => self.freeList = next,
+                    None => self.free_list = next,
                 }
 
                 let min_block_size = std::mem::size_of::<FreeBlock>();
@@ -66,12 +65,12 @@ impl<'a> FreeListAllocator<'a> {
                         new_block_addr.write(FreeBlock {
                             base: new_block_addr as usize,
                             size: leftover,
-                            next: self.freeList,
+                            next: self.free_list,
                         });
 
                         // prepending to the start
                         // after: cur (new_block) (FreeBlock) -> next (cur) (FreeBlock)
-                        self.freeList = NonNull::new(new_block_addr);
+                        self.free_list = NonNull::new(new_block_addr);
                     }
                 }
                 return Some(aligned_addr as *mut u8);
@@ -102,7 +101,7 @@ impl<'a> FreeListAllocator<'a> {
         }
 
         let mut prev: Option<NonNull<FreeBlock>> = None;
-        let mut curr = self.freeList;
+        let mut curr = self.free_list;
 
         while let Some(block_nn) = curr {
             if block_nn.as_ptr() as usize > new_addr {
@@ -115,7 +114,7 @@ impl<'a> FreeListAllocator<'a> {
         unsafe {
             (*new_ptr).next = curr;
             match prev {
-                None => self.freeList = NonNull::new(new_ptr),
+                None => self.free_list = NonNull::new(new_ptr),
                 Some(mut p) => p.as_mut().next = NonNull::new(new_ptr),
             }
         }
@@ -142,7 +141,7 @@ impl<'a> FreeListAllocator<'a> {
          *
          */
         let mut prev: Option<NonNull<FreeBlock>> = None;
-        let mut curr = self.freeList;
+        let mut curr = self.free_list;
 
         while let Some(block_nn) = curr {
             // read everything up front before any writes
