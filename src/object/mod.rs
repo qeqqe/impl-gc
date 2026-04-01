@@ -1,5 +1,3 @@
-mod card;
-mod descriptor;
-mod header;
-mod pointer;
-mod root;
+pub mod descriptor;
+pub mod header;
+pub mod pointer;

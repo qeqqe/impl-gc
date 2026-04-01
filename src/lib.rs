@@ -1,8 +1,8 @@
 #![allow(dead_code, unused_allocation, unused_assignments)]
 
+mod gc;
 mod heap;
 mod object;
-
 #[allow(dead_code, unused_allocation, unused_mut, unused_must_use)]
 #[cfg(test)]
 mod test {
