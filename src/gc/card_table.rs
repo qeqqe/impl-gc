@@ -21,7 +21,7 @@ const CARD_SIZE: usize = 512;
 /// on the old generation. This doesn't necessarily guarantees that the old generation
 /// holds the reference to a young generation but this is magnitudes better then
 /// walking the whole old generation every cycle.
-struct CardTable {
+pub struct CardTable {
     card: Vec<u8>,
     heap_base: usize,
     heap_size: usize,
@@ -37,7 +37,7 @@ impl CardTable {
         }
     }
 
-    fn mark_dirty(&self, addr: *const u8) {
+    pub fn mark_dirty(&self, addr: *const u8) {
         if let Some(idx) = self.card_index(addr as usize) {
             // SAFTEY: Innterior mutability with raw index +
             // single threaded garbage collection
@@ -48,11 +48,11 @@ impl CardTable {
         }
     }
 
-    fn is_dirty(&self, card_index: usize) -> bool {
+    pub fn is_dirty(&self, card_index: usize) -> bool {
         self.card.get(card_index).copied().unwrap_or(0) == 1
     }
 
-    fn card_index(&self, addr: usize) -> Option<usize> {
+    pub fn card_index(&self, addr: usize) -> Option<usize> {
         if addr < self.heap_base && addr >= self.heap_base + self.heap_size {
             return None;
         }
@@ -60,11 +60,11 @@ impl CardTable {
         Some((addr - self.heap_base) / CARD_SIZE)
     }
 
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.card.fill(0);
     }
 
-    fn dirty_cards(&self) -> impl Iterator<Item = (usize, *const u8)> + '_ {
+    pub fn dirty_cards(&self) -> impl Iterator<Item = (usize, *const u8)> + '_ {
         self.card
             .iter()
             .enumerate()

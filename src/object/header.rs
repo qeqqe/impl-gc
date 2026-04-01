@@ -33,6 +33,15 @@ impl GcHeader {
         self.mark.load(Ordering::Relaxed) != MarkColor::White as u8
     }
 
+    /// get mark
+    pub fn mark_color(&self) -> MarkColor {
+        match self.mark.load(Ordering::Relaxed) {
+            1 => MarkColor::Grey,
+            2 => MarkColor::Black,
+            _ => MarkColor::White,
+        }
+    }
+
     pub fn set_mark(&self, color: MarkColor) {
         self.mark.store(color as u8, Ordering::Relaxed);
     }

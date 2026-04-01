@@ -8,7 +8,7 @@ pub struct StackFrame {
     pub slots: Vec<*mut *mut GcHeader>,
 }
 
-struct RootRegistry {
+pub struct RootRegistry {
     /// outer: root slot location, inner: current heap ptr
     globals: Vec<*mut *mut GcHeader>,
     /// interpreter's call stack
