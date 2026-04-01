@@ -17,9 +17,15 @@ pub struct GcPtr<T> {
     ptr: *mut GcHeader,
     _marker: PhantomData<T>,
 }
+impl<T> Copy for GcPtr<T> {}
+impl<T> Clone for GcPtr<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
 
 impl<T> GcPtr<T> {
-    pub fn from_raw(ptr: *mut GcHeader) -> Self {
+    pub unsafe fn from_raw(ptr: *mut GcHeader) -> Self {
         Self {
             ptr,
             _marker: PhantomData,
@@ -34,7 +40,7 @@ impl<T> GcPtr<T> {
         unsafe { self.ptr.as_ref().unwrap() }
     }
 
-    pub fn data(&self) -> &T {
+    pub unsafe fn data(&self) -> &T {
         unsafe {
             self.ptr
                 .cast::<u8>()
@@ -45,7 +51,7 @@ impl<T> GcPtr<T> {
         }
     }
 
-    pub fn data_mut(&mut self) -> &mut T {
+    pub unsafe fn data_mut(&mut self) -> &mut T {
         unsafe {
             self.ptr
                 .cast::<u8>()
