@@ -32,7 +32,20 @@ impl<'a> Promoter<'a> {
             (*new_ptr).age = (*new_ptr).age.saturating_add(1);
         }
 
+        // All the old reference pointing to eden_ptr now should be pointing at new_ptr
         self.forawding.insert(eden_ptr as usize, new_ptr as usize);
         Ok(new_ptr)
+    }
+
+    // for checking if the forwarding table has the new address in the freelist
+    // then updating it in place.
+    fn fixup_ptr(&self, slot: *mut *mut GcHeader) {
+        unsafe {
+            let current = slot as usize;
+
+            if let Some(&ptr) = self.forawding.get(&current) {
+                *slot = ptr as *mut GcHeader;
+            }
+        }
     }
 }
