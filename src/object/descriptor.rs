@@ -3,7 +3,7 @@ use crate::object::header::GcHeader;
 pub struct TypeDescriptor {
     pub name: &'static str, // for debugging
     pub instance_size: usize,
-    pub pointer_offsets: &'static [usize], // offset of pointer field
+    pub pointer_offsets: &'static [usize], // offsets of pointer field
 }
 
 impl TypeDescriptor {
@@ -38,6 +38,18 @@ impl TypeDescriptor {
                 let child_header = GcHeader::from_object_ptr(child_user_ptr);
 
                 visit(child_header);
+            }
+        }
+    }
+    /// yields slot addresses, used for promoter fixup passes
+    pub fn trace_slots<F: FnMut(*mut *mut GcHeader)>(&self, obj: *mut u8, mut visit: F) {
+        for &offset in self.pointer_offsets {
+            unsafe {
+                // the slot stores a user-data pointer (*mut u8),
+                // but for fixup we treat it as *mut *mut GcHeader
+                // because we're rewriting what the slot points to
+                let slot = obj.add(offset) as *mut *mut GcHeader;
+                visit(slot);
             }
         }
     }
