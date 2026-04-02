@@ -1,1 +1,126 @@
+use std::ops::Add;
 
+use crate::{
+    gc::{
+        card_table::CardTable,
+        promoter::{self, Promoter},
+        root::RootRegistry,
+    },
+    heap::{bump::BumpAllocator, freelist::FreeListAllocator, region::Region},
+    object::header::{GcHeader, MarkColor},
+};
+
+#[derive(Debug, Default)]
+pub struct SweepStats {
+    pub live_objects: usize,
+    pub dead_objects: usize,
+    pub promoted_objects: usize,
+    pub bytes_freed: usize,
+    pub bytes_live: usize,
+}
+
+pub struct Sweeper;
+
+impl Sweeper {
+    /// handle Eden survivors, run fixup, wipe eden
+    fn sweep_young(
+        bump: &mut BumpAllocator,
+        promoter: &mut Promoter,
+        roots: &RootRegistry,
+        cards: &CardTable,
+        old_gen: &Region,
+    ) -> SweepStats {
+        const CARD_SIZE: usize = 512;
+        let mut stats = SweepStats::default();
+
+        // PHASE-1:  walk the eden region linearly from base->cursor
+
+        let base = bump.region.base();
+        let used = bump.used();
+        let mut cursor = base;
+        let end = unsafe { base.add(used) };
+
+        while cursor < end {
+            let header = unsafe { &mut *GcHeader::from_object_ptr(cursor) };
+            let obj_size = header.size as usize;
+
+            match header.mark_color() {
+                MarkColor::White => {
+                    // ded asf
+                    stats.dead_objects.add(1);
+                    stats.bytes_freed.add(obj_size);
+                }
+                MarkColor::Grey => {
+                    // NOTE: THIS should NEVER HAPPEN, all the grey objects
+                    // should be eventually BLACK in the marking phase.
+
+                    debug_assert!(
+                        false,
+                        " incomplete mark phase, GREY object found during sweep."
+                    );
+                }
+                MarkColor::Black => {
+                    // ALIVE!!!
+
+                    if promoter.should_promote(header) {
+                        match promoter.promote(GcHeader::from_object_ptr(cursor)) {
+                            Ok(_new_ptr) => {
+                                stats.promoted_objects += 1;
+                                stats.live_objects += 1;
+                                stats.bytes_live += obj_size;
+                            }
+                            Err(_) => {
+                                // old gen full, so major GC is triggred
+                                // TODO: for now: leave object in Eden marked Black
+                                // the GC driver must handle this OOM case
+                                stats.live_objects += 1;
+                            }
+                        }
+                    } else {
+                        header.increment_age();
+                        // NOTE: reset the color for the next gc sweep
+                        header.set_mark(MarkColor::White);
+                        stats.live_objects += 1;
+                        stats.bytes_live += obj_size;
+                    }
+                }
+            }
+
+            cursor = unsafe { cursor.add(obj_size) };
+        }
+
+        // PHASE-2: Fixup, rewrite stale eden addr to new old-gen ones
+        // NOTE: order matters here.
+
+        // i.    fix promoted objects internal fields first
+        //      (their fields may point to other eden objs that were also promoted)
+        //
+        promoter.fixup_promoted_objects();
+
+        // ii.   fix roots (stack frames, globals)
+        promoter.fixup_roots(roots);
+
+        // iii.  fix dirty card objects in old gen
+        promoter.fixup_dirty_cards(cards, old_gen);
+
+        // All three must happen BEFORE `bump.reset()`
+
+        // PHASE-3: wipe eden.
+        // dead majority is reclaimed in O(1) regardless of dead count.
+        // non-promoted survivor's age was incremented.
+        // but their memory is also wiped
+        //
+        // TODO: Keep the non-promoted survivors in eden across cycles,
+        // for this implement to-space/semi-space design instead.
+        // NOTE: For now: all survivors are promoted, reset eden.
+
+        promoter.reset();
+
+        stats
+    }
+
+    /// linear walk of old gen, free dead, clear marks on live
+    pub fn sweep_old(freelist: &mut FreeListAllocator, old_gen: &Region) -> SweepStats {
+        todo!()
+    }
+}

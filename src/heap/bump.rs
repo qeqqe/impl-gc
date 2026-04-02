@@ -2,8 +2,8 @@ use crate::heap::region::{AllocError, Region};
 use std::ptr::NonNull;
 
 pub struct BumpAllocator<'a> {
-    region: &'a mut Region,
-    cursor: usize,
+    pub region: &'a mut Region,
+    pub cursor: usize,
 }
 
 impl<'a> BumpAllocator<'a> {

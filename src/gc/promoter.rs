@@ -7,7 +7,7 @@ use crate::{
 };
 
 /// Copies surviving young generation to old generation when they have survived enough
-struct Promoter<'a> {
+pub struct Promoter<'a> {
     threshold: u8,
     old_gen: &'a mut FreeListAllocator<'a>,
     // maps eden address with new old-gen address
@@ -15,11 +15,20 @@ struct Promoter<'a> {
 }
 
 impl<'a> Promoter<'a> {
-    fn should_promote(&self, header: &GcHeader) -> bool {
+    pub fn new(threshold: u8, old_gen: &'a mut FreeListAllocator<'a>) -> Self {
+        Self {
+            threshold,
+            old_gen,
+            forawding: HashMap::new(),
+        }
+    }
+
+    pub fn should_promote(&self, header: &GcHeader) -> bool {
         header.age >= self.threshold
     }
 
-    fn promote(&mut self, eden_ptr: *mut GcHeader) -> Result<*mut GcHeader, ()> {
+    /// for all the BLACK eden objects
+    pub fn promote(&mut self, eden_ptr: *mut GcHeader) -> Result<*mut GcHeader, ()> {
         let total_size = unsafe { (*eden_ptr).size as usize };
         let new_raw = self
             .old_gen
@@ -41,15 +50,17 @@ impl<'a> Promoter<'a> {
         Ok(new_ptr)
     }
 
-    /// for checking if the forwarding table has the new address in the freelist
-    /// then updating it in place.
-    fn fixup_ptr(&self, slot: *mut *mut GcHeader) {
-        unsafe {
-            let current = slot as usize;
+    /// promoted objects were copied verbatim,
+    /// so their pointer fields still point to eden
+    /// addresses of OTHER objects that may have also been promoted
+    pub fn fixup_promoted_objects(&self) {
+        for (&_old_addr, &new_addr) in &self.forawding {
+            let new_header = new_addr as *mut GcHeader;
+            let type_desc = unsafe { &*(*new_header).type_desc };
 
-            if let Some(&ptr) = self.forawding.get(&current) {
-                *slot = ptr as *mut GcHeader;
-            }
+            type_desc.trace_slots(unsafe { (*new_header).object_start() }, |slot| {
+                self.fixup_ptr(slot);
+            });
         }
     }
 
@@ -60,6 +71,7 @@ impl<'a> Promoter<'a> {
             self.fixup_ptr(slot as *mut *mut GcHeader);
         }
     }
+
     /// fix dirty cards references, updating eden <- old_gen reference to point to the
     /// promoted eden ptr
     pub fn fixup_dirty_cards(&self, cards: &CardTable, old_gen: &Region) {
@@ -87,17 +99,15 @@ impl<'a> Promoter<'a> {
         }
     }
 
-    /// promoted objects were copied verbatim,
-    /// so their pointer fields still point to eden
-    /// addresses of OTHER objects that may have also been promoted
-    pub fn fixup_promoted_object(&self) {
-        for (&_old_addr, &new_addr) in &self.forawding {
-            let new_header = new_addr as *mut GcHeader;
-            let type_desc = unsafe { &*(*new_header).type_desc };
+    /// for checking if the forwarding table has the new address in the freelist
+    /// then updating it in place.
+    pub fn fixup_ptr(&self, slot: *mut *mut GcHeader) {
+        unsafe {
+            let current = slot as usize;
 
-            type_desc.trace_slots(unsafe { (*new_header).object_start() }, |slot| {
-                self.fixup_ptr(slot);
-            });
+            if let Some(&ptr) = self.forawding.get(&current) {
+                *slot = ptr as *mut GcHeader;
+            }
         }
     }
 
@@ -111,7 +121,12 @@ impl<'a> Promoter<'a> {
         self.forawding.contains_key(&(addr as usize))
     }
 
-    fn reset(&mut self) {
+    /// resets eden mapping...
+    /// NOTE: run `fixup_promoted_objects` before `bump.reset()`,
+    /// because fixup reads the forwarding table which
+    /// references old eden addresses, those addresses
+    /// are still valid until `bump.reset()` fires...
+    pub fn reset(&mut self) {
         self.forawding.clear();
     }
 }
