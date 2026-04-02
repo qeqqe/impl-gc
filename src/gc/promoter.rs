@@ -48,4 +48,18 @@ impl<'a> Promoter<'a> {
             }
         }
     }
+
+    fn forwarded_addr(&self, ptr: *mut GcHeader) -> Option<*mut GcHeader> {
+        self.forawding
+            .get(&(ptr as usize))
+            .map(|&addr| addr as *mut GcHeader)
+    }
+
+    fn was_promoted(&self, addr: *mut GcHeader) -> bool {
+        self.forawding.contains_key(&(addr as usize))
+    }
+
+    fn reset(&mut self) {
+        self.forawding.clear();
+    }
 }
