@@ -1,9 +1,15 @@
-#![allow(dead_code, unused_allocation, unused_assignments)]
+#![allow(
+    dead_code,
+    unused_allocation,
+    unused_assignments,
+    unused_mut,
+    unused_must_use
+)]
 
 mod gc;
 mod heap;
 mod object;
-#[allow(dead_code, unused_allocation, unused_mut, unused_must_use)]
+
 #[cfg(test)]
 mod test {
     use crate::heap::{bump, freelist, region};
