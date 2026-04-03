@@ -120,7 +120,7 @@ impl<'a> FreeListAllocator<'a> {
         }
     }
 
-    fn coalesce(&mut self) {
+    pub fn coalesce(&mut self) {
         /*
          * 1. Right before the GC marks references in heap
          * it'll looks like this:

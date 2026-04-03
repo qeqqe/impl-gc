@@ -1,14 +1,9 @@
-use std::ops::Add;
-
 use crate::{
-    gc::{
-        card_table::CardTable,
-        promoter::{self, Promoter},
-        root::RootRegistry,
-    },
+    gc::{card_table::CardTable, promoter::Promoter, root::RootRegistry},
     heap::{bump::BumpAllocator, freelist::FreeListAllocator, region::Region},
     object::header::{GcHeader, MarkColor},
 };
+use std::ops::Add;
 
 #[derive(Debug, Default)]
 pub struct SweepStats {
@@ -56,7 +51,7 @@ impl Sweeper {
 
                     debug_assert!(
                         false,
-                        " incomplete mark phase, GREY object found during sweep."
+                        " incomplete mark phase, GREY object found during young sweep."
                     );
                 }
                 MarkColor::Black => {
@@ -119,8 +114,54 @@ impl Sweeper {
         stats
     }
 
-    /// linear walk of old gen, free dead, clear marks on live
+    /// linear walk of old gen, free dead, clear marks on live, coalesce
     pub fn sweep_old(freelist: &mut FreeListAllocator, old_gen: &Region) -> SweepStats {
-        todo!()
+        let mut stats = SweepStats::default();
+
+        let base = old_gen.base();
+        let end = unsafe { base.add(old_gen.size()) };
+        // NOTE: cursor always starts with a `GcHeader`
+        let mut cursor = base;
+
+        while cursor < end {
+            let header = unsafe { &mut *GcHeader::from_object_ptr(cursor) };
+            let obj_size = header.size as usize;
+
+            // safe-guard
+            if obj_size == 0 {
+                debug_assert!(false, "A zero-size allocation at {:p}", cursor);
+                break;
+            }
+            match header.mark_color() {
+                MarkColor::White => {
+                    freelist.free(cursor, obj_size);
+                    stats.dead_objects += 1;
+                    stats.bytes_freed += obj_size;
+                }
+                MarkColor::Grey => {
+                    // Just as young gen sweep, GREY objects
+                    // can't and shouldn't be in the sweep phase.
+                    debug_assert!(
+                        false,
+                        " incomplete mark phase, GREY object found during old gen sweep."
+                    );
+                    stats.live_objects += 1;
+                }
+                MarkColor::Black => {
+                    // ALIVE!!!
+                    // reset for next cycle
+                    header.set_mark(MarkColor::White);
+                    stats.bytes_live += obj_size;
+                    stats.live_objects += obj_size;
+                }
+            }
+            unsafe {
+                cursor = cursor.add(obj_size);
+            };
+        }
+
+        freelist.coalesce();
+
+        stats
     }
 }
