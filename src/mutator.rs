@@ -147,4 +147,14 @@ impl<'gc> Mutator<'gc> {
             *field_slot = new_value;
         }
     }
+
+    /// Called on:
+    ///      - loop back-edge (GOTO, IF_* branching backward)
+    ///      - method invocation boundry (INVOKE*)
+    ///      - allocation site (before alloc)
+    /// Hot path: single atomic load when no GC in progress (zero cost).
+    #[inline]
+    pub fn safepoint(&self) {
+        self.safepoint.poll_and_park();
+    }
 }
