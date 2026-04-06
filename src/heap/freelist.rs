@@ -10,15 +10,25 @@ struct FreeBlock {
     next: Option<NonNull<FreeBlock>>,
 }
 
-pub struct FreeListAllocator<'a> {
-    region: &'a mut Region,
+pub struct FreeListAllocator {
+    region_base: usize,
+    region_size: usize,
     free_list: Option<NonNull<FreeBlock>>,
 }
 
-impl<'a> FreeListAllocator<'a> {
-    pub fn new(region: &'a mut Region) -> Self {
+impl FreeListAllocator {
+    pub fn new(region_base: usize, region_size: usize) -> Self {
         Self {
-            region,
+            region_base,
+            region_size,
+            free_list: None,
+        }
+    }
+
+    pub fn from_region(region: &Region) -> Self {
+        Self {
+            region_base: region.base() as usize,
+            region_size: region.size(),
             free_list: None,
         }
     }

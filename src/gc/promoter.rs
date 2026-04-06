@@ -7,19 +7,16 @@ use crate::{
 };
 
 /// Copies surviving young generation to old generation when they have survived enough
-pub struct Promoter<'a> {
-    threshold: u8,
-    old_gen: &'a mut FreeListAllocator<'a>,
-    // maps eden address with new old-gen address
-    forawding: HashMap<usize, usize>,
+pub struct Promoter {
+    pub threshold: u8,
+    forwarding: HashMap<usize, usize>,
 }
 
-impl<'a> Promoter<'a> {
-    pub fn new(threshold: u8, old_gen: &'a mut FreeListAllocator<'a>) -> Self {
+impl Promoter {
+    pub fn new(threshold: u8) -> Self {
         Self {
             threshold,
-            old_gen,
-            forawding: HashMap::new(),
+            forwarding: HashMap::new(),
         }
     }
 
@@ -28,15 +25,16 @@ impl<'a> Promoter<'a> {
     }
 
     /// for all the BLACK eden objects
-    pub fn promote(&mut self, eden_ptr: *mut GcHeader) -> Result<*mut GcHeader, ()> {
+    pub fn promote(
+        &mut self,
+        eden_ptr: *mut GcHeader,
+        old_alloc: &mut FreeListAllocator,
+    ) -> Result<*mut GcHeader, ()> {
         let total_size = unsafe { (*eden_ptr).size as usize };
-        let new_raw = self
-            .old_gen
+        let new_raw = old_alloc
             .alloc(total_size, std::mem::align_of::<GcHeader>())
             .ok_or(())?;
-
         let new_ptr = new_raw as *mut GcHeader;
-
         unsafe {
             // copying the whole object as verbatim
             std::ptr::copy_nonoverlapping(eden_ptr as *const u8, new_ptr as *mut u8, total_size);
@@ -44,9 +42,7 @@ impl<'a> Promoter<'a> {
             // bumping the header's age
             (*new_ptr).age = (*new_ptr).age.saturating_add(1);
         }
-
-        // All the old reference pointing to eden_ptr now should be pointing at new_ptr
-        self.forawding.insert(eden_ptr as usize, new_ptr as usize);
+        self.forwarding.insert(eden_ptr as usize, new_ptr as usize);
         Ok(new_ptr)
     }
 
@@ -54,7 +50,7 @@ impl<'a> Promoter<'a> {
     /// so their pointer fields still point to eden
     /// addresses of OTHER objects that may have also been promoted
     pub fn fixup_promoted_objects(&self) {
-        for (&_old_addr, &new_addr) in &self.forawding {
+        for (&_old_addr, &new_addr) in &self.forwarding {
             let new_header = new_addr as *mut GcHeader;
             let type_desc = unsafe { &*(*new_header).type_desc };
 
@@ -105,20 +101,20 @@ impl<'a> Promoter<'a> {
         unsafe {
             let current = slot as usize;
 
-            if let Some(&ptr) = self.forawding.get(&current) {
+            if let Some(&ptr) = self.forwarding.get(&current) {
                 *slot = ptr as *mut GcHeader;
             }
         }
     }
 
     fn forwarded_addr(&self, ptr: *mut GcHeader) -> Option<*mut GcHeader> {
-        self.forawding
+        self.forwarding
             .get(&(ptr as usize))
             .map(|&addr| addr as *mut GcHeader)
     }
 
     fn was_promoted(&self, addr: *mut GcHeader) -> bool {
-        self.forawding.contains_key(&(addr as usize))
+        self.forwarding.contains_key(&(addr as usize))
     }
 
     /// resets eden mapping...
@@ -127,6 +123,6 @@ impl<'a> Promoter<'a> {
     /// references old eden addresses, those addresses
     /// are still valid until `bump.reset()` fires...
     pub fn reset(&mut self) {
-        self.forawding.clear();
+        self.forwarding.clear();
     }
 }
