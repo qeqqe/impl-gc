@@ -61,6 +61,12 @@ impl<T> GcPtr<T> {
                 .unwrap()
         }
     }
+    pub unsafe fn cast<U>(&self) -> GcPtr<U> {
+        GcPtr {
+            ptr: self.ptr,
+            _marker: PhantomData,
+        }
+    }
 
     pub fn is_null(&self) -> bool {
         self.ptr.is_null()

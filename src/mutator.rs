@@ -153,9 +153,13 @@ impl<'gc> Mutator<'gc> {
     }
 
     /// Called on:
-    ///      - loop back-edge (GOTO, IF_* branching backward)
-    ///      - method invocation boundry (INVOKE*)
-    ///      - allocation site (before alloc)
+    ///     - loop back-edge (GOTO, IF_* branching backward. if we never
+    ///        poll the safepoint here, a thread in a tight loop runs forever
+    ///        without the GC ever getting a chance to stop it)
+    ///
+    ///     - method invocation boundry (INVOKE*)
+    ///
+    ///     - allocation site (before alloc)
     /// Hot path: single atomic load when no GC in progress (zero cost).
     #[inline]
     pub fn safepoint(&self) {
