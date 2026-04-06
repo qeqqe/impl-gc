@@ -33,7 +33,7 @@ pub enum AllocResult {
 /// Result returned by `alloc()`. Handled by the interpreter loop.
 pub struct Mutator<'gc> {
     /// Owned by the mutator threads,
-    pub tlab: BumpAllocator<'gc>,
+    pub tlab: BumpAllocator,
 
     roots: RootRegistry,
 
@@ -47,7 +47,7 @@ pub struct Mutator<'gc> {
 
 impl<'gc> Mutator<'gc> {
     pub fn new(
-        tlab: BumpAllocator<'gc>,
+        tlab: BumpAllocator,
         card_table: &'gc CardTable,
         young_gen: &'gc Region,
         old_gen: &'gc Region,

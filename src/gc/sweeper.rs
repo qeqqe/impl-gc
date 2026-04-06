@@ -21,6 +21,7 @@ impl Sweeper {
     fn sweep_young(
         bump: &mut BumpAllocator,
         promoter: &mut Promoter,
+        freelist: &mut FreeListAllocator,
         roots: &RootRegistry,
         cards: &CardTable,
         old_gen: &Region,
@@ -30,7 +31,7 @@ impl Sweeper {
 
         // PHASE-1:  walk the eden region linearly from base->cursor
 
-        let base = bump.region.base();
+        let base = bump.region_base();
         let used = bump.used();
         let mut cursor = base;
         let end = unsafe { base.add(used) };
@@ -58,7 +59,7 @@ impl Sweeper {
                     // ALIVE!!!
 
                     if promoter.should_promote(header) {
-                        match promoter.promote(GcHeader::from_object_ptr(cursor)) {
+                        match promoter.promote(GcHeader::from_object_ptr(cursor), freelist) {
                             Ok(_new_ptr) => {
                                 stats.promoted_objects += 1;
                                 stats.live_objects += 1;
