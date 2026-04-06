@@ -10,6 +10,8 @@ use crate::{
     },
 };
 
+/// Returned by `collector.alloc()`
+/// prevent's circular dependencies between `Mutator` and `Collector`.
 pub enum AllocResult {
     /// successfull allocation.
     Ok(GcPtr<()>),
@@ -25,7 +27,6 @@ pub enum AllocResult {
 }
 
 /// Result returned by `alloc()`. Handled by the interpreter loop.
-/// prevent's circular dependencies between `Mutator` and `Collector`.
 pub struct Mutator<'gc> {
     /// Owned by the mutator threads,
     pub tlab: BumpAllocator<'gc>,
@@ -104,6 +105,46 @@ impl<'gc> Mutator<'gc> {
                 AllocResult::Ok(gc_ptr)
             }
             None => AllocResult::NeedMinorGC,
+        }
+    }
+
+    /// Must be called by the interpreter on EVERY pointer write into a GC object.
+    ///
+    /// Java bytecodes that needs this:
+    ///   PUTFIELD  (write instance field)
+    ///   PUTSTATIC (write static field, treat static area as old-gen)
+    ///   AASTORE   (write into reference array)
+    ///
+    /// Only mark card dirty if:
+    ///   - holder lives in old gen (old-gen writes are what we track)
+    ///   - new_value lives in young gen (cross-gen pointer = potential missed root)
+    ///
+    /// Writing null or a non-heap value: pass null for `new_value`, barrier no-ops
+    #[inline]
+    pub fn write_barrier(
+        &self,
+        holder: *mut GcHeader,    // obj being written INTO
+        field_offset: usize,      // byte offset of the field within `object_start()`
+        new_value: *mut GcHeader, // value being stored
+    ) {
+        // skip if new_value is null or not a young-gen (fast path)
+        if new_value.is_null() {
+            return;
+        }
+
+        unsafe {
+            let holder_obj = (*holder).object_start() as *const u8;
+            let new_value_obj = (*new_value).object_start() as *const u8;
+
+            if self.old_gen.contains(holder_obj) && self.young_gen.contains(new_value_obj) {
+                // mark card covering `holder` as dirty
+                self.card_table.mark_dirty(holder_obj);
+            }
+
+            // Perform the actual write, update the field
+            // The field stores a user data pointer (*mut u8), not a GcHeader pointer
+            let field_slot = holder_obj.add(field_offset) as *mut *mut GcHeader;
+            *field_slot = new_value;
         }
     }
 }
