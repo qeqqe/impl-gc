@@ -16,6 +16,13 @@ pub struct RootRegistry {
 }
 
 impl RootRegistry {
+    pub fn new() -> Self {
+        Self {
+            globals: Vec::new(),
+            shadow_stack: Vec::new(),
+        }
+    }
+
     /// register a global/static root slot
     /// `root` is the address of the slot that holds the GC pointer not the GC pointer itself
     pub fn register_global(&mut self, root: *mut *mut GcHeader) {

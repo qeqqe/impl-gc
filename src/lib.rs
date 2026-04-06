@@ -8,8 +8,8 @@
 
 mod gc;
 mod heap;
+mod mutator;
 mod object;
-
 #[cfg(test)]
 mod test {
     use crate::heap::{bump, freelist, region};
