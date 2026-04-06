@@ -1,7 +1,11 @@
 use std::sync::atomic::AtomicU8;
 
 use crate::{
-    gc::{card_table::CardTable, root::RootRegistry, safepoint::SafepointCoordinator},
+    gc::{
+        card_table::CardTable,
+        root::{RootRegistry, StackFrame},
+        safepoint::SafepointCoordinator,
+    },
     heap::{bump::BumpAllocator, region::Region},
     object::{
         descriptor::TypeDescriptor,
@@ -31,7 +35,7 @@ pub struct Mutator<'gc> {
     /// Owned by the mutator threads,
     pub tlab: BumpAllocator<'gc>,
 
-    root: RootRegistry,
+    roots: RootRegistry,
 
     pub card_table: &'gc CardTable,
 
@@ -51,7 +55,7 @@ impl<'gc> Mutator<'gc> {
     ) -> Self {
         Self {
             tlab,
-            root: RootRegistry::new(),
+            roots: RootRegistry::new(),
             card_table,
             young_gen,
             old_gen,
@@ -156,5 +160,38 @@ impl<'gc> Mutator<'gc> {
     #[inline]
     pub fn safepoint(&self) {
         self.safepoint.poll_and_park();
+    }
+
+    /// Push a new interpreter frame's GC roots onto the shadow stack.
+    /// Call this immediately after entering a bytecode method.
+    ///
+    /// `frame.slots` must contain *mut *mut GcHeader for every local variable
+    /// slot and operand stack slot in this frame that can hold an object ref.
+    pub fn push_frame(&mut self, frame: StackFrame) {
+        self.roots.push_frame(frame);
+    }
+
+    /// Pop the current frame's roots when returning from a method.
+    /// Must be called in all exit paths — normal return AND exception unwind.
+    pub fn pop_frame(&mut self) {
+        self.roots.pop_frame();
+    }
+
+    /// Register a global/static root (class static fields, interned strings, etc.)
+    pub fn register_global(&mut self, slot: *mut *mut GcHeader) {
+        self.roots.register_global(slot);
+    }
+
+    pub fn unregister_global(&mut self, slot: *mut *mut GcHeader) {
+        self.roots.unregister_global(slot);
+    }
+}
+
+impl<'gc> Drop for Mutator<'gc> {
+    fn drop(&mut self) {
+        // Unregister from safepoint coordinator when thread exits.
+        // Without this, `wait_for_all_threads()` would block forever
+        // waiting for a thread that no longer exists.
+        self.safepoint.unregister_thread();
     }
 }
