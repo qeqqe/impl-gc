@@ -8,6 +8,16 @@ pub struct BumpAllocator {
 }
 
 impl BumpAllocator {
+    pub fn new(region: &Region) -> Self {
+        let base = region.base() as usize;
+        let limit = region.size() + base;
+        Self {
+            base,
+            cursor: base,
+            limit,
+        }
+    }
+
     pub fn from_region(region: &Region) -> Self {
         let base = region.base() as usize;
         Self {
@@ -54,4 +64,3 @@ impl BumpAllocator {
         self.base as *mut u8
     }
 }
-

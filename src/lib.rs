@@ -11,6 +11,7 @@ mod heap;
 mod interpreter;
 mod mutator;
 mod object;
+mod temp;
 
 #[cfg(test)]
 mod test {

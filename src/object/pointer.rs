@@ -32,11 +32,11 @@ impl<T> GcPtr<T> {
         }
     }
 
-    fn as_ptr(&self) -> *mut GcHeader {
+    pub fn as_ptr(&self) -> *mut GcHeader {
         self.ptr
     }
 
-    fn header(&self) -> &GcHeader {
+    pub fn header(&self) -> &GcHeader {
         unsafe { self.ptr.as_ref().unwrap() }
     }
 
