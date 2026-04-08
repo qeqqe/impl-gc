@@ -11,7 +11,6 @@ mod heap;
 mod interpreter;
 mod mutator;
 mod object;
-mod temp;
 
 #[cfg(test)]
 mod test {
@@ -249,7 +248,7 @@ mod test {
         let mut r = region::Region::new(4096).unwrap();
         let mut bump = bump::BumpAllocator::new(&mut r);
         bump.alloc(2048, 8);
-        bump.reset().unwrap();
+        bump.reset();
         assert_eq!(bump.used(), 0);
         assert_eq!(bump.remaining(), 4096);
     }
@@ -261,7 +260,7 @@ mod test {
         bump.alloc(4096, 1);
         assert!(bump.alloc(1, 1).is_none());
 
-        bump.reset().unwrap();
+        bump.reset();
         let ptr = bump.alloc(4096, 1);
         assert!(ptr.is_some());
     }
@@ -277,7 +276,7 @@ mod test {
             std::ptr::write(p1.as_ptr() as *mut u64, 0xDEAD_BEEF);
         }
 
-        bump.reset().unwrap();
+        bump.reset();
 
         // second generation — should be writable
         let p2 = bump.alloc(8, 8).unwrap();
@@ -328,10 +327,10 @@ mod test {
     // You must seed it by free()-ing the entire region range.
 
     /// Helper: create a region + freelist and seed the entire region as free.
-    fn make_freelist(region: &mut region::Region) -> freelist::FreeListAllocator<'_> {
+    fn make_freelist(region: &mut region::Region) -> freelist::FreeListAllocator {
         let base = region.base();
         let size = region.size();
-        let mut fl = freelist::FreeListAllocator::new(region);
+        let mut fl = freelist::FreeListAllocator::new(base as usize, size);
         fl.free(base, size);
         fl
     }
@@ -339,7 +338,7 @@ mod test {
     #[test]
     fn freelist_empty_alloc_returns_none() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut fl = freelist::FreeListAllocator::new(&mut r);
+        let mut fl = freelist::FreeListAllocator::new(r.base() as usize, r.size());
         // no free blocks seeded
         assert!(fl.alloc(64, 8).is_none());
     }
@@ -400,7 +399,7 @@ mod test {
         // The full 64 bytes should be allocatable (block is consumed).
         let mut r = region::Region::new(4096).unwrap();
         let base = r.base();
-        let mut fl = freelist::FreeListAllocator::new(&mut r);
+        let mut fl = freelist::FreeListAllocator::new(r.base() as usize, r.size());
 
         fl.free(base, 64);
 
