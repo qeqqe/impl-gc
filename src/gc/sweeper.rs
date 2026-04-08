@@ -18,7 +18,7 @@ pub struct Sweeper;
 
 impl Sweeper {
     /// handle Eden survivors, run fixup, wipe eden
-    fn sweep_young(
+    pub fn sweep_young(
         bump: &mut BumpAllocator,
         promoter: &mut Promoter,
         freelist: &mut FreeListAllocator,

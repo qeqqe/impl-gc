@@ -28,7 +28,7 @@ pub struct CardTable {
 }
 
 impl CardTable {
-    fn new(heap_base: *const u8, heap_size: usize) -> Self {
+    pub fn new(heap_base: *const u8, heap_size: usize) -> Self {
         let num_card = heap_size.div_ceil(CARD_SIZE);
         Self {
             card: vec![0u8; num_card],

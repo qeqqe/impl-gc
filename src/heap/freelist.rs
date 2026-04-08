@@ -186,4 +186,16 @@ impl FreeListAllocator {
             curr = block_next;
         }
     }
+
+    pub fn free_bytes(&self) -> usize {
+        let mut total = 0;
+        let mut curr = self.free_list;
+
+        while let Some(block_nn) = curr {
+            total += unsafe { block_nn.as_ref().size };
+            curr = unsafe { block_nn.as_ref().next };
+        }
+
+        total
+    }
 }

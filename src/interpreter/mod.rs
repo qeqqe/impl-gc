@@ -593,8 +593,7 @@ impl<'gc> Interpreter<'gc> {
                         other => return other, // exception / OOM propagates up
                     }
                 }
-
-                // ── Returns ───────────────────────────────────────────────────
+                // RETURNS
                 // Signal the end of this method invocation.
                 // The execute() function handles pop_frame() and call_stack.pop().
                 RETURN => {
@@ -610,7 +609,7 @@ impl<'gc> Interpreter<'gc> {
                     return ExecResult::ReturnValue(v);
                 }
 
-                // ── Exceptions ────────────────────────────────────────────────
+                // EXCEPTIONS
                 ATHROW => {
                     let obj = self.call_stack.last_mut().unwrap().pop();
                     // TODO: exception dispatch, walk call stack looking for handler
@@ -627,10 +626,16 @@ impl<'gc> Interpreter<'gc> {
     }
 
     fn invoke_method(&mut self, method_index: usize, args: Vec<Value>) -> ExecResult {
-        todo!()
+        // TODO: look up method_index in a method table
+        // method table entry: (bytecode: Vec<u8>, max_locals: usize, max_stack: usize, name)
+        todo!("method resolution: map method_index -> bytecode + frame size")
     }
 
     fn branch(&mut self, instruction_pc: usize, offset: i16) {
-        todo!()
+        if offset < 0 {
+            self.mutator.safepoint();
+        }
+        let frame = self.call_stack.last_mut().unwrap();
+        frame.jump(instruction_pc, offset);
     }
 }

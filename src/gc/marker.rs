@@ -4,13 +4,13 @@ use crate::{
     object::header::{GcHeader, MarkColor},
 };
 
-struct Marker {
+pub struct Marker {
     worklist: Vec<*mut GcHeader>,
 }
 
 /// Marker owns the worklist.
 impl Marker {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             worklist: Vec::with_capacity(1024),
         }
@@ -44,7 +44,7 @@ impl Marker {
         self.drain(|child_obj| young_gen.contains(child_obj));
     }
 
-    fn mark_major(&mut self, roots: &RootRegistry, heap: &Region) {
+    pub fn mark_major(&mut self, roots: &RootRegistry, heap: &Region) {
         for root in roots.iter_roots() {
             unsafe {
                 let header = &*root;
