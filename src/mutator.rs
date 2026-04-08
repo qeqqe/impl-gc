@@ -125,7 +125,7 @@ impl<'gc> Mutator<'gc> {
     ///
     /// Writing null or a non-heap value: pass null for `new_value`, barrier no-ops
     #[inline]
-    pub fn write_barrier(
+    pub unsafe fn write_barrier(
         &self,
         holder: *mut GcHeader,    // obj being written INTO
         field_offset: usize,      // byte offset of the field within `object_start()`

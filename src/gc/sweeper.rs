@@ -59,7 +59,9 @@ impl Sweeper {
                     // ALIVE!!!
 
                     if promoter.should_promote(header) {
-                        match promoter.promote(GcHeader::from_object_ptr(cursor), freelist) {
+                        match unsafe {
+                            promoter.promote(GcHeader::from_object_ptr(cursor), freelist)
+                        } {
                             Ok(_new_ptr) => {
                                 stats.promoted_objects += 1;
                                 stats.live_objects += 1;
@@ -97,7 +99,7 @@ impl Sweeper {
         promoter.fixup_roots(roots);
 
         // iii.  fix dirty card objects in old gen
-        promoter.fixup_dirty_cards(cards, old_gen);
+        unsafe { promoter.fixup_dirty_cards(cards, old_gen) };
 
         // All three must happen BEFORE `bump.reset()`
 

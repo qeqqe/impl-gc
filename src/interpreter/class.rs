@@ -19,9 +19,8 @@ pub struct ExceptionHandler {
     pub start_pc: u16,
     pub end_pc: u16,
     pub handler_pc: u16,
-    pub catch_type: Option<u16>, // None = catch-all (finally)
+    pub catch_type: Option<String>,
 }
-
 /// runtime class representation
 /// one exists per loaded java class
 pub struct Class {

@@ -6,11 +6,12 @@
     unused_must_use
 )]
 
-mod gc;
-mod heap;
-mod interpreter;
-mod mutator;
-mod object;
+pub mod classfile;
+pub mod gc;
+pub mod heap;
+pub mod interpreter;
+pub mod mutator;
+pub mod object;
 
 #[cfg(test)]
 mod test {

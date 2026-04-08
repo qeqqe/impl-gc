@@ -20,7 +20,7 @@ impl TypeDescriptor {
     ///     right: *mut Node, // <- trace, Gc managed reference (pointer offset 24),
     /// }
     /// ```
-    pub fn trace<F: FnMut(*mut GcHeader)>(&self, obj: *mut u8, mut visit: F) {
+    pub unsafe fn trace<F: FnMut(*mut GcHeader)>(&self, obj: *mut u8, mut visit: F) {
         for &offset in self.pointer_offsets {
             unsafe {
                 // address of the pointer field inside this object
@@ -42,7 +42,7 @@ impl TypeDescriptor {
         }
     }
     /// yields slot addresses, used for promoter fixup passes
-    pub fn trace_slots<F: FnMut(*mut *mut GcHeader)>(&self, obj: *mut u8, mut visit: F) {
+    pub unsafe fn trace_slots<F: FnMut(*mut *mut GcHeader)>(&self, obj: *mut u8, mut visit: F) {
         for &offset in self.pointer_offsets {
             unsafe {
                 // the slot stores a user-data pointer (*mut u8),

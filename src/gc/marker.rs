@@ -4,17 +4,13 @@ use crate::{
     object::header::{GcHeader, MarkColor},
 };
 
+#[derive(Debug, Default)]
 pub struct Marker {
     worklist: Vec<*mut GcHeader>,
 }
 
 /// Marker owns the worklist.
 impl Marker {
-    pub fn new() -> Self {
-        Self {
-            worklist: Vec::with_capacity(1024),
-        }
-    }
     /// only trace objects reachable from roots that live in young gen
     /// Old -> young cross gen pointers are in dirty cards
     pub fn mark_minor(

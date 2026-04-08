@@ -41,7 +41,7 @@ impl Collector {
             bump,
             freelist,
             card_table,
-            marker: Marker::new(),
+            marker: Marker::default(),
             promoter: Promoter::new(2),
             safepoint: Arc::new(SafepointCoordinator::new()),
         }
@@ -57,8 +57,8 @@ impl Collector {
         self.marker.mark_minor(
             roots,
             &self.card_table,
-            &*self.old_region,
-            &*self.young_region,
+            &self.old_region,
+            &self.young_region,
         );
 
         let stats = Sweeper::sweep_young(
@@ -92,9 +92,9 @@ impl Collector {
         self.safepoint.wait_for_all_threads();
 
         // MARK tenured
-        self.marker.mark_major(roots, &*self.old_region);
+        self.marker.mark_major(roots, &self.old_region);
 
-        let stats = Sweeper::sweep_old(&mut self.freelist, &*self.old_region);
+        let stats = Sweeper::sweep_old(&mut self.freelist, &self.old_region);
 
         // RESET worklist
         self.marker.reset();

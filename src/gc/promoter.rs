@@ -25,7 +25,7 @@ impl Promoter {
     }
 
     /// for all the BLACK eden objects
-    pub fn promote(
+    pub unsafe fn promote(
         &mut self,
         eden_ptr: *mut GcHeader,
         old_alloc: &mut FreeListAllocator,
@@ -54,9 +54,11 @@ impl Promoter {
             let new_header = new_addr as *mut GcHeader;
             let type_desc = unsafe { &*(*new_header).type_desc };
 
-            type_desc.trace_slots(unsafe { (*new_header).object_start() }, |slot| {
-                self.fixup_ptr(slot);
-            });
+            unsafe {
+                type_desc.trace_slots((*new_header).object_start(), |slot| {
+                    self.fixup_ptr(slot);
+                })
+            };
         }
     }
 
@@ -64,13 +66,13 @@ impl Promoter {
     pub fn fixup_roots(&self, roots: &RootRegistry) {
         for slot in roots.iter_roots() {
             // iter_root() yields *mut *mut GcHeader, the slot addresses
-            self.fixup_ptr(slot as *mut *mut GcHeader);
+            unsafe { self.fixup_ptr(slot as *mut *mut GcHeader) };
         }
     }
 
     /// fix dirty cards references, updating eden <- old_gen reference to point to the
     /// promoted eden ptr
-    pub fn fixup_dirty_cards(&self, cards: &CardTable, old_gen: &Region) {
+    pub unsafe fn fixup_dirty_cards(&self, cards: &CardTable, old_gen: &Region) {
         const CARD_SIZE: usize = 512;
 
         for (_, root) in cards.dirty_cards() {
@@ -83,10 +85,12 @@ impl Promoter {
                 let header = unsafe { &*GcHeader::from_object_ptr(cursor) };
                 let type_desc = unsafe { &*header.type_desc };
 
-                type_desc.trace(cursor, |child_header_ptr| {
-                    // trace gives us *mut GcHeader, we need the slot address
-                    // this requires trace to yield `*mut *mut GcHeader`
-                });
+                unsafe {
+                    type_desc.trace(cursor, |_child_header_ptr| {
+                        // trace gives us *mut GcHeader, we need the slot address
+                        // this requires trace to yield `*mut *mut GcHeader`
+                    })
+                };
 
                 unsafe {
                     cursor.add(header.size as usize);
@@ -97,7 +101,7 @@ impl Promoter {
 
     /// for checking if the forwarding table has the new address in the freelist
     /// then updating it in place.
-    pub fn fixup_ptr(&self, slot: *mut *mut GcHeader) {
+    pub unsafe fn fixup_ptr(&self, slot: *mut *mut GcHeader) {
         unsafe {
             let current = slot as usize;
 

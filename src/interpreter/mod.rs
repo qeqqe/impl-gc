@@ -514,7 +514,7 @@ impl<'gc> Interpreter<'gc> {
                         Value::Reference(new_ref) => {
                             // WRITE BARRIER: mandatory for reference field writes
                             // This dirties the card if obj is old-gen and new_ref is young-gen
-                            self.mutator.write_barrier(obj_ref, field_offset, new_ref);
+                            unsafe { self.mutator.write_barrier(obj_ref, field_offset, new_ref) };
                             // write_barrier performs the actual field write internally
                         }
                         Value::Int(v) => {
