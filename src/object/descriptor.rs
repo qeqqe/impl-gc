@@ -23,20 +23,12 @@ impl TypeDescriptor {
     pub unsafe fn trace<F: FnMut(*mut GcHeader)>(&self, obj: *mut u8, mut visit: F) {
         for &offset in self.pointer_offsets {
             unsafe {
-                // address of the pointer field inside this object
-                let field_addr = obj.add(offset) as *mut *mut u8;
+                let field_addr = obj.add(offset) as *mut *mut GcHeader;
+                let child_header = *field_addr;
 
-                // read the pointer VALUE stored at that field
-                let child_user_ptr = *field_addr;
-
-                // null = unset field, skip
-                if child_user_ptr.is_null() {
+                if child_header.is_null() {
                     continue;
                 }
-
-                //  step back past GcHeader to get the child's header
-                let child_header = GcHeader::from_object_ptr(child_user_ptr);
-
                 visit(child_header);
             }
         }

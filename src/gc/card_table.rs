@@ -53,7 +53,7 @@ impl CardTable {
     }
 
     pub fn card_index(&self, addr: usize) -> Option<usize> {
-        if addr < self.heap_base && addr >= self.heap_base + self.heap_size {
+        if addr < self.heap_base || addr >= self.heap_base + self.heap_size {
             return None;
         }
 

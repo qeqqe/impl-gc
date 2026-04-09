@@ -1,0 +1,68 @@
+impl-gc
+=======
+
+JVM-oriented runtime written in Rust.
+Not a conformant JVM. Covers object layout, allocation, bytecode
+interpretation, and GC primitives sufficient to execute the sample
+workload under ``sample/``.
+
+Building
+--------
+
+::
+
+    cargo build
+
+Running
+-------
+
+All sample entrypoints::
+
+    cargo run --quiet
+
+Single class::
+
+    cargo run --quiet -- GcStressTest
+
+Per-instruction trace::
+
+    cargo run --quiet -- --trace
+
+Heap sizing::
+
+    IMPL_GC_YOUNG_MB=64 IMPL_GC_OLD_MB=256 cargo run --quiet
+
+Runtime
+-------
+
+Scans ``sample/`` for ``.class`` files on startup. Resolves and executes
+``main([Ljava/lang/String;)V`` in each. Static zero-argument methods with
+non-void return types are also called and their values printed.
+
+``--trace`` emits class, method, pc, and opcode at each dispatch.
+
+Source
+------
+
+::
+
+    src/classfile/mod.rs        Class loader, constant-pool resolution.
+    src/interpreter/mod.rs      Bytecode interpreter, invocation, runtime exceptions.
+    src/interpreter/frame.rs    Locals, operand stack, program counter.
+    src/mutator.rs              Allocation fast path, write barrier, safepoint poll.
+    src/gc/                     Collector, marker, sweeper, promoter, card table.
+
+Interpreter
+-----------
+
+Covers the opcode set used by the sample workload. Constants, locals,
+arithmetic, branches, object allocation, field access, method calls,
+returns. Constant pool references resolved from classfile data at runtime.
+No hardcoded dispatch table.
+
+Notes
+-----
+
+Control flow is direct. No intermediate abstractions between the
+interpreter loop and GC primitives. State is visible at each opcode
+boundary.

@@ -53,6 +53,8 @@ impl<'gc> Mutator<'gc> {
         old_gen: &'gc Region,
         safepoint: &'gc SafepointCoordinator,
     ) -> Self {
+        safepoint.register_thread();
+
         Self {
             tlab,
             roots: RootRegistry::new(),
@@ -69,7 +71,7 @@ impl<'gc> Mutator<'gc> {
     ///
     /// example:
     ///
-    /// ```rust
+    /// ```ignore
     /// loop {
     ///     match mutator.alloc() {
     ///         AllocResult::Ok(gc_ptr) =>  { /* use ptr */ break; },
@@ -131,35 +133,27 @@ impl<'gc> Mutator<'gc> {
         field_offset: usize,      // byte offset of the field within `object_start()`
         new_value: *mut GcHeader, // value being stored
     ) {
-        // skip if new_value is null or not a young-gen (fast path)
-        if new_value.is_null() {
-            return;
-        }
-
         unsafe {
-            let holder_obj = (*holder).object_start() as *const u8;
-            let new_value_obj = (*new_value).object_start() as *const u8;
-
-            if self.old_gen.contains(holder_obj) && self.young_gen.contains(new_value_obj) {
-                // mark card covering `holder` as dirty
-                self.card_table.mark_dirty(holder_obj);
-            }
-
-            // Perform the actual write, update the field
-            // The field stores a user data pointer (*mut u8), not a GcHeader pointer
+            let holder_obj = (*holder).object_start() as *mut u8;
             let field_slot = holder_obj.add(field_offset) as *mut *mut GcHeader;
             *field_slot = new_value;
+
+            if new_value.is_null() {
+                return;
+            }
+
+            let new_value_obj = (*new_value).object_start() as *const u8;
+            if self.old_gen.contains(holder_obj as *const u8)
+                && self.young_gen.contains(new_value_obj)
+            {
+                // mark card covering `holder` as dirty
+                self.card_table.mark_dirty(holder_obj as *const u8);
+            }
         }
     }
 
-    /// Called on:
-    ///     - loop back-edge (GOTO, IF_* branching backward. if we never
-    ///        poll the safepoint here, a thread in a tight loop runs forever
-    ///        without the GC ever getting a chance to stop it)
-    ///
-    ///     - method invocation boundry (INVOKE*)
-    ///
-    ///     - allocation site (before alloc)
+    /// Called at loop back-edges, method invocation boundaries, and allocation sites.
+    /// This keeps mutator threads responsive to stop-the-world requests.
     /// Hot path: single atomic load when no GC in progress (zero cost).
     #[inline]
     pub fn safepoint(&self) {
@@ -188,6 +182,10 @@ impl<'gc> Mutator<'gc> {
 
     pub fn unregister_global(&mut self, slot: *mut *mut GcHeader) {
         self.roots.unregister_global(slot);
+    }
+
+    pub fn roots(&self) -> &RootRegistry {
+        &self.roots
     }
 }
 

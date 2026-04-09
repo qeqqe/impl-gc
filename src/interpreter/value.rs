@@ -46,4 +46,3 @@ impl Value {
 
     pub const NULL: Value = Value::Reference(std::ptr::null_mut());
 }
-

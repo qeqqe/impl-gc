@@ -1,5 +1,37 @@
 use crate::object::descriptor::TypeDescriptor;
 
+#[derive(Debug, Clone)]
+pub enum CpEntry {
+    Empty,
+    Utf8(String),
+    Int(i32),
+    Long(i64),
+    Float(f32),
+    Double(f64),
+    StringLiteral(String),
+    ClassRef(String),
+    FieldRef {
+        class: String,
+        name: String,
+        descriptor: String,
+    },
+    MethodRef {
+        class: String,
+        name: String,
+        descriptor: String,
+    },
+    InterfaceMethodRef {
+        class: String,
+        name: String,
+        descriptor: String,
+    },
+    NameAndType {
+        name: String,
+        descriptor: String,
+    },
+    Unsupported,
+}
+
 /// produced by the classfile loader after parsing with cafebabe
 pub struct Method {
     pub name: &'static str,
@@ -26,6 +58,7 @@ pub struct ExceptionHandler {
 pub struct Class {
     pub name: String, // e.g. "java/lang/Object"
     pub super_name: Option<String>,
+    pub constant_pool: Vec<CpEntry>,
     pub methods: Vec<Method>,
     pub fields: Vec<FieldInfo>,
 
@@ -51,5 +84,11 @@ impl Class {
         self.methods
             .iter()
             .find(|m| m.name == name && m.descriptor == descriptor)
+    }
+
+    pub fn find_field(&self, name: &str, descriptor: &str) -> Option<&FieldInfo> {
+        self.fields
+            .iter()
+            .find(|f| f.name == name && f.descriptor == descriptor)
     }
 }

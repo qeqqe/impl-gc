@@ -26,6 +26,11 @@ pub struct Collector {
     pub safepoint: Arc<SafepointCoordinator>,
 }
 
+pub trait GcTrigger {
+    fn collect_minor(&mut self, roots: &RootRegistry);
+    fn collect_major(&mut self, roots: &RootRegistry);
+}
+
 impl Collector {
     pub fn new(young_size: usize, old_size: usize) -> Self {
         let young_region = Region::new(young_size).expect("couldn't allocate young gen");
@@ -125,5 +130,15 @@ impl Collector {
 
     pub fn old_gen_used(&self) -> usize {
         self.old_region.size() - self.freelist.free_bytes()
+    }
+}
+
+impl GcTrigger for Collector {
+    fn collect_minor(&mut self, roots: &RootRegistry) {
+        Collector::collect_minor(self, roots);
+    }
+
+    fn collect_major(&mut self, roots: &RootRegistry) {
+        Collector::collect_major(self, roots);
     }
 }

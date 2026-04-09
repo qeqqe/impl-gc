@@ -18,6 +18,9 @@ pub struct Frame {
 
     /// name of stack trace purposes
     pub method_name: &'static str,
+
+    /// owner class of this method frame
+    pub class_name: String,
 }
 
 impl Frame {
@@ -26,6 +29,7 @@ impl Frame {
         max_locals: usize,
         max_stack: usize,
         method_name: &'static str,
+        class_name: String,
     ) -> Self {
         Self {
             bytecode,
@@ -33,6 +37,7 @@ impl Frame {
             locals: vec![Value::Void; max_locals],
             operand_stack: Vec::with_capacity(max_stack),
             method_name,
+            class_name,
         }
     }
 
