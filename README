@@ -4,7 +4,7 @@ impl-gc
 JVM-oriented runtime written in Rust.
 Not a conformant JVM. Covers object layout, allocation, bytecode
 interpretation, and GC primitives sufficient to execute the sample
-workload under ``sample/``.
+workload under `sample/`.
 
 Building
 --------
@@ -33,11 +33,11 @@ Heap sizing:
 Runtime
 -------
 
-Scans ``sample/`` for ``.class`` files on startup. Resolves and executes
-``main([Ljava/lang/String;)V`` in each. Static zero-argument methods with
+Scans `sample/` for `.class` files on startup. Resolves and executes
+`main([Ljava/lang/String;)V in each. Static zero-argument methods with
 non-void return types are also called and their values printed.
 
-``--trace`` emits class, method, pc, and opcode at each dispatch.
+`--trace` emits class, method, pc, and opcode at each dispatch.
 
 Source
 ------
