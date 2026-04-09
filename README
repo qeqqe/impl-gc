@@ -9,26 +9,24 @@ workload under ``sample/``.
 Building
 --------
 
-::
-
     cargo build
 
 Running
 -------
 
-All sample entrypoints::
+All sample entrypoints:
 
     cargo run --quiet
 
-Single class::
+Single class:
 
     cargo run --quiet -- GcStressTest
 
-Per-instruction trace::
+Per-instruction trace:
 
     cargo run --quiet -- --trace
 
-Heap sizing::
+Heap sizing:
 
     IMPL_GC_YOUNG_MB=64 IMPL_GC_OLD_MB=256 cargo run --quiet
 
@@ -43,8 +41,6 @@ non-void return types are also called and their values printed.
 
 Source
 ------
-
-::
 
     src/classfile/mod.rs        Class loader, constant-pool resolution.
     src/interpreter/mod.rs      Bytecode interpreter, invocation, runtime exceptions.
