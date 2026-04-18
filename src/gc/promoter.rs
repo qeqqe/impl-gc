@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Add};
+use std::collections::HashMap;
 
 use crate::{
     gc::{card_table::CardTable, root::RootRegistry},
@@ -25,6 +25,12 @@ impl Promoter {
     }
 
     /// for all the BLACK eden objects
+    ///
+    /// # Safety
+    /// `eden_ptr` must point to a valid live object in the young generation and
+    /// `old_alloc` must own valid writable old-generation space for the copied
+    /// object bytes.
+    #[allow(clippy::result_unit_err)]
     pub unsafe fn promote(
         &mut self,
         eden_ptr: *mut GcHeader,
@@ -64,46 +70,51 @@ impl Promoter {
 
     /// called after all Eden survivors are promoted
     pub fn fixup_roots(&self, roots: &RootRegistry) {
-        for slot in roots.iter_roots() {
-            // iter_root() yields *mut *mut GcHeader, the slot addresses
-            unsafe { self.fixup_ptr(slot as *mut *mut GcHeader) };
-        }
+        roots.for_each_root_ptr_mut(|ptr| {
+            if let Some(&new_addr) = self.forwarding.get(&(*ptr as usize)) {
+                *ptr = new_addr as *mut GcHeader;
+            }
+        });
     }
 
     /// fix dirty cards references, updating eden <- old_gen reference to point to the
     /// promoted eden ptr
+    ///
+    /// # Safety
+    /// `cards` entries must refer to valid addresses in `old_gen`, and objects
+    /// traversed from those addresses must have valid headers/descriptors.
     pub unsafe fn fixup_dirty_cards(&self, cards: &CardTable, old_gen: &Region) {
         const CARD_SIZE: usize = 512;
 
         for (_, root) in cards.dirty_cards() {
             let card_base = root as usize;
-            let card_end = card_base.add(CARD_SIZE);
+            let card_end = card_base + CARD_SIZE;
 
             let mut cursor = card_base as *mut u8;
 
-            while cursor < card_end as *mut u8 && old_gen.contains(root) {
+            while cursor < card_end as *mut u8 && old_gen.contains(cursor as *const u8) {
                 let header = unsafe { &*GcHeader::from_object_ptr(cursor) };
                 let type_desc = unsafe { &*header.type_desc };
 
                 unsafe {
-                    type_desc.trace(cursor, |_child_header_ptr| {
-                        // trace gives us *mut GcHeader, we need the slot address
-                        // this requires trace to yield `*mut *mut GcHeader`
+                    type_desc.trace_slots(header.object_start(), |slot| {
+                        self.fixup_ptr(slot);
                     })
                 };
 
-                unsafe {
-                    cursor.add(header.size as usize);
-                }
+                cursor = unsafe { cursor.add(header.size as usize) };
             }
         }
     }
 
     /// for checking if the forwarding table has the new address in the freelist
     /// then updating it in place.
+    ///
+    /// # Safety
+    /// `slot` must be a valid mutable pointer slot inside a traced object.
     pub unsafe fn fixup_ptr(&self, slot: *mut *mut GcHeader) {
         unsafe {
-            let current = slot as usize;
+            let current = *slot as usize;
 
             if let Some(&ptr) = self.forwarding.get(&current) {
                 *slot = ptr as *mut GcHeader;

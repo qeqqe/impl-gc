@@ -1,64 +1,52 @@
 impl-gc
-=======
 
-JVM-oriented runtime written in Rust.
-Not a conformant JVM. Covers object layout, allocation, bytecode
-interpretation, and GC primitives sufficient to execute the sample
-workload under `sample/`.
+Small JVM-like runtime in Rust.
+It loads `.class` files from `sample/`, interprets bytecode, allocates objects in young space,
+and promotes survivors into old space during minor GC.
 
-Building
---------
+This project is:
+`classfile` parser + runtime class model + bytecode interpreter + object allocator + GC plumbing.
 
-    cargo build
+This project is not:
+a full Java VM.
+No full JDK integration, no full verifier, no complete JVM opcode surface.
 
-Running
--------
+Integration scope in this repository:
+`src/classfile/mod.rs` parses class bytes and resolves constant-pool entries.
+`src/interpreter/mod.rs` executes methods and resolves field/method/class refs from constant pool at runtime.
+`src/mutator.rs` handles fast allocation path and write barrier.
+`src/gc/*` handles mark/sweep/promotion paths when young space fills.
+`src/main.rs` drives loading, entrypoint execution, probe output, and GC summary reporting.
 
-All sample entrypoints:
+Build:
+`cargo build`
 
-    cargo run --quiet
+Run all sample entrypoints:
+`cargo run --quiet`
 
-Single class:
+Run one class:
+`cargo run --quiet -- GcStressTest`
 
-    cargo run --quiet -- GcStressTest
+Enable opcode trace:
+`cargo run --quiet -- --trace`
 
-Per-instruction trace:
+Force visible GC activity:
+`IMPL_GC_YOUNG_BYTES=32768 IMPL_GC_OLD_BYTES=8388608 cargo run --quiet`
 
-    cargo run --quiet -- --trace
+Expected GC visibility in forced mode:
+`[gc] minor: roots=... young_before=... promoted=... freed=...`
+and final:
+`gc summary: minor=... major=... young_used=... old_used=...`
 
-Heap sizing:
+Why `minor=0 major=0` can still happen:
+default young heap is large enough for the sample workload, so allocation never exhausts young space.
+No exhaustion means no collection call.
 
-    IMPL_GC_YOUNG_MB=64 IMPL_GC_OLD_MB=256 cargo run --quiet
+About running Java directly:
+`java ./sample/Foo.java` is not the normal class execution form.
+Use:
+`javac sample/Foo.java`
+`java -cp sample Foo`
 
-Runtime
--------
-
-Scans `sample/` for `.class` files on startup. Resolves and executes
-`main([Ljava/lang/String;)V in each. Static zero-argument methods with
-non-void return types are also called and their values printed.
-
-`--trace` emits class, method, pc, and opcode at each dispatch.
-
-Source
-------
-
-    src/classfile/mod.rs        Class loader, constant-pool resolution.
-    src/interpreter/mod.rs      Bytecode interpreter, invocation, runtime exceptions.
-    src/interpreter/frame.rs    Locals, operand stack, program counter.
-    src/mutator.rs              Allocation fast path, write barrier, safepoint poll.
-    src/gc/                     Collector, marker, sweeper, promoter, card table.
-
-Interpreter
------------
-
-Covers the opcode set used by the sample workload. Constants, locals,
-arithmetic, branches, object allocation, field access, method calls,
-returns. Constant pool references resolved from classfile data at runtime.
-No hardcoded dispatch table.
-
-Notes
------
-
-Control flow is direct. No intermediate abstractions between the
-interpreter loop and GC primitives. State is visible at each opcode
-boundary.
+For this repository you already have compiled sample `.class` files; `cargo run --quiet`
+executes them through this runtime.

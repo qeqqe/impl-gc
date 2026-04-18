@@ -3,7 +3,6 @@ use std::{env, fs, path::Path};
 use impl_gc::{
     classfile::ClassLoader,
     gc::collector::Collector,
-    heap::bump::BumpAllocator,
     interpreter::{ExecResult, Interpreter, value::Value},
     mutator::Mutator,
 };
@@ -45,13 +44,15 @@ fn main() {
 
     let young_mb = env_usize("IMPL_GC_YOUNG_MB", 64);
     let old_mb = env_usize("IMPL_GC_OLD_MB", 256);
-    let collector = Collector::new(young_mb * 1024 * 1024, old_mb * 1024 * 1024);
+    let young_bytes = env_usize_opt("IMPL_GC_YOUNG_BYTES").unwrap_or(young_mb * 1024 * 1024);
+    let old_bytes = env_usize_opt("IMPL_GC_OLD_BYTES").unwrap_or(old_mb * 1024 * 1024);
+    let collector = Collector::new(young_bytes, old_bytes);
 
     let mutator = Mutator::new(
-        BumpAllocator::from_region(collector.young_region()),
+        collector.tlab(),
         collector.card_table(),
-        collector.old_region(),
         collector.young_region(),
+        collector.old_region(),
         &collector.safepoint,
     );
 
@@ -95,6 +96,7 @@ fn main() {
             max_stack,
             vec![Value::NULL],
             method_name,
+            &collector,
         );
 
         all_ok &= print_exec_result("main", result);
@@ -109,8 +111,13 @@ fn main() {
         for (method_name, descriptor) in probes {
             probe_count += 1;
             let label = format!("{}.{}{}", class_name, method_name, descriptor);
-            let result =
-                interpreter.invoke_static(class_name, &method_name, &descriptor, Vec::new());
+            let result = interpreter.invoke_static(
+                class_name,
+                &method_name,
+                &descriptor,
+                Vec::new(),
+                &collector,
+            );
             all_ok &= print_exec_result(&label, result);
         }
     }
@@ -118,6 +125,15 @@ fn main() {
     if probe_count == 0 {
         println!("  (no probe candidates found)");
     }
+
+    println!();
+    println!(
+        "gc summary: minor={} major={} young_used={}B old_used={}B",
+        collector.minor_collections(),
+        collector.major_collections(),
+        collector.young_gen_used(),
+        collector.old_gen_used()
+    );
 
     if !all_ok {
         std::process::exit(1);
@@ -263,4 +279,11 @@ fn env_usize(key: &str, default: usize) -> usize {
         .and_then(|value| value.parse::<usize>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(default)
+}
+
+fn env_usize_opt(key: &str) -> Option<usize> {
+    env::var(key)
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
 }

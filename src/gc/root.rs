@@ -1,11 +1,11 @@
-use crate::object::header::GcHeader;
+use crate::{interpreter::value::Value, object::header::GcHeader};
 
 ///  Single frame on the interpreter's shadow stack.
 /// Each slot is a pointer to a pointer, the outer ptr is the location
 /// of a reference slot in the interpreter frame, the inner ptr is the
 /// GC object it currently holds
 pub struct StackFrame {
-    pub slots: Vec<*mut *mut GcHeader>,
+    pub slots: Vec<*mut Value>,
 }
 
 pub struct RootRegistry {
@@ -13,6 +13,12 @@ pub struct RootRegistry {
     globals: Vec<*mut *mut GcHeader>,
     /// interpreter's call stack
     shadow_stack: Vec<StackFrame>,
+}
+
+impl Default for RootRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RootRegistry {
@@ -56,11 +62,34 @@ impl RootRegistry {
 
         let frame_slots = self.shadow_stack.iter().flat_map(|frame| {
             frame.slots.iter().filter_map(|&slot| {
-                let ptr = unsafe { *slot };
-                if ptr.is_null() { None } else { Some(ptr) }
+                let value = unsafe { &*slot };
+                match value {
+                    Value::Reference(ptr) if !ptr.is_null() => Some(*ptr),
+                    _ => None,
+                }
             })
         });
 
         globals.chain(frame_slots)
+    }
+
+    pub fn root_count(&self) -> usize {
+        self.iter_roots().count()
+    }
+
+    pub fn for_each_root_ptr_mut<F: FnMut(&mut *mut GcHeader)>(&self, mut f: F) {
+        for &slot in &self.globals {
+            let ptr = unsafe { &mut *slot };
+            f(ptr);
+        }
+
+        for frame in &self.shadow_stack {
+            for &slot in &frame.slots {
+                let value = unsafe { &mut *slot };
+                if let Value::Reference(ptr) = value {
+                    f(ptr);
+                }
+            }
+        }
     }
 }

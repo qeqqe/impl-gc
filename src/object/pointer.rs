@@ -25,6 +25,8 @@ impl<T> Clone for GcPtr<T> {
 }
 
 impl<T> GcPtr<T> {
+    /// # Safety
+    /// `ptr` must be a valid pointer to a GC-managed allocation header.
     pub unsafe fn from_raw(ptr: *mut GcHeader) -> Self {
         Self {
             ptr,
@@ -40,6 +42,9 @@ impl<T> GcPtr<T> {
         unsafe { self.ptr.as_ref().unwrap() }
     }
 
+    /// # Safety
+    /// The allocation behind this pointer must contain a properly initialized `T`
+    /// value in its payload area and remain valid for the returned borrow.
     pub unsafe fn data(&self) -> &T {
         unsafe {
             self.ptr
@@ -51,6 +56,9 @@ impl<T> GcPtr<T> {
         }
     }
 
+    /// # Safety
+    /// The allocation behind this pointer must contain a properly initialized `T`
+    /// payload and be uniquely borrowed for the duration of the mutable borrow.
     pub unsafe fn data_mut(&mut self) -> &mut T {
         unsafe {
             self.ptr
@@ -61,6 +69,8 @@ impl<T> GcPtr<T> {
                 .unwrap()
         }
     }
+    /// # Safety
+    /// Caller must ensure reinterpreting this payload as `U` is valid.
     pub unsafe fn cast<U>(&self) -> GcPtr<U> {
         GcPtr {
             ptr: self.ptr,

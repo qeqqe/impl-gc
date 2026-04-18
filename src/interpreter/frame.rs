@@ -1,4 +1,4 @@
-use crate::{interpreter::value::Value, object::header::GcHeader};
+use crate::interpreter::value::Value;
 
 pub struct Frame {
     /// the bytecode being executed, slice into the method code buffer
@@ -101,26 +101,16 @@ impl Frame {
 
     // root extraction for gc
 
-    /// collects all ref slots in this frame for the shadow stack
+    /// registers local slots in this frame for the shadow stack
     /// called by the interpreter when pushing a `StackFrame` to `RootRegistry`
     ///
-    /// the returned pointers are into self.locals and self.operand_stack
+    /// every local slot is tracked because its type may change to Reference at runtime
+    /// operand-stack slots are not tracked here
     /// the `Frame` must outlive the `StackFrame` registration
-    pub fn reference_slots(&mut self) -> Vec<*mut *mut GcHeader> {
-        let mut slots = Vec::new();
-
-        for val in self.locals.iter_mut() {
-            if let Value::Reference(ptr) = val {
-                slots.push(ptr as *mut *mut GcHeader);
-            }
-        }
-
-        for val in self.operand_stack.iter_mut() {
-            if let Value::Reference(ptr) = val {
-                slots.push(ptr as *mut *mut GcHeader);
-            }
-        }
-
-        slots
+    pub fn reference_slots(&mut self) -> Vec<*mut Value> {
+        self.locals
+            .iter_mut()
+            .map(|val| val as *mut Value)
+            .collect()
     }
 }

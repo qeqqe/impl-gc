@@ -20,6 +20,9 @@ impl TypeDescriptor {
     ///     right: *mut Node, // <- trace, Gc managed reference (pointer offset 24),
     /// }
     /// ```
+    ///
+    /// # Safety
+    /// `obj` must point to a valid object body matching this descriptor layout.
     pub unsafe fn trace<F: FnMut(*mut GcHeader)>(&self, obj: *mut u8, mut visit: F) {
         for &offset in self.pointer_offsets {
             unsafe {
@@ -34,6 +37,9 @@ impl TypeDescriptor {
         }
     }
     /// yields slot addresses, used for promoter fixup passes
+    ///
+    /// # Safety
+    /// `obj` must point to a valid object body matching this descriptor layout.
     pub unsafe fn trace_slots<F: FnMut(*mut *mut GcHeader)>(&self, obj: *mut u8, mut visit: F) {
         for &offset in self.pointer_offsets {
             unsafe {

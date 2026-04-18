@@ -335,8 +335,8 @@ fn parse_constant_pool(bytes: &[u8]) -> Result<Vec<CpEntry>, ClassLoadError> {
     }
 
     let mut resolved = vec![CpEntry::Empty; cp_count];
-    for i in 1..cp_count {
-        resolved[i] = resolve_cp_entry(&raw, i);
+    for (i, entry) in resolved.iter_mut().enumerate().take(cp_count).skip(1) {
+        *entry = resolve_cp_entry(&raw, i);
     }
 
     Ok(resolved)

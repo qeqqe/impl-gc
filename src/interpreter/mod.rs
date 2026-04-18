@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     classfile::ClassLoader,
-    gc::root::StackFrame,
+    gc::{collector::GcTrigger, root::StackFrame},
     mutator::{AllocResult, Mutator},
     object::header::GcHeader,
 };
@@ -71,6 +71,7 @@ impl<'gc> Interpreter<'gc> {
         self.trace = trace;
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn execute(
         &mut self,
         class_name: String,
@@ -79,6 +80,7 @@ impl<'gc> Interpreter<'gc> {
         max_stack: usize,
         args: Vec<Value>,
         method_name: &'static str,
+        gc: &dyn GcTrigger,
     ) -> ExecResult {
         if args.len() > max_locals {
             return self.exception(format!(
@@ -110,7 +112,7 @@ impl<'gc> Interpreter<'gc> {
         self.mutator.push_frame(StackFrame { slots: root_slots });
         self.call_stack.push(frame);
 
-        let result = self.run();
+        let result = self.run(gc);
 
         if self.trace {
             let frame = self.call_stack.last().unwrap();
@@ -152,11 +154,12 @@ impl<'gc> Interpreter<'gc> {
         method_name: &str,
         descriptor: &str,
         args: Vec<Value>,
+        gc: &dyn GcTrigger,
     ) -> ExecResult {
-        self.invoke_resolved(class_name, method_name, descriptor, args)
+        self.invoke_resolved(class_name, method_name, descriptor, args, gc)
     }
 
-    fn run(&mut self) -> ExecResult {
+    fn run(&mut self, gc: &dyn GcTrigger) -> ExecResult {
         loop {
             self.mutator.safepoint();
 
@@ -536,12 +539,23 @@ impl<'gc> Interpreter<'gc> {
                     };
 
                     self.mutator.safepoint();
-                    let object_ptr = match self.mutator.alloc(type_desc) {
-                        AllocResult::Ok(ptr) => ptr.as_ptr(),
-                        AllocResult::NeedMinorGC | AllocResult::NeedMajorGC => {
+                    let mut gc_retries = 0usize;
+                    let object_ptr = loop {
+                        match self.mutator.alloc(type_desc) {
+                            AllocResult::Ok(ptr) => break ptr.as_ptr(),
+                            AllocResult::NeedMinorGC => {
+                                gc.collect_minor(self.mutator.roots());
+                            }
+                            AllocResult::NeedMajorGC => {
+                                gc.collect_major(self.mutator.roots());
+                            }
+                            AllocResult::OutOfMemory => return ExecResult::OutOfMemory,
+                        }
+
+                        gc_retries += 1;
+                        if gc_retries > 8 {
                             return ExecResult::OutOfMemory;
                         }
-                        AllocResult::OutOfMemory => return ExecResult::OutOfMemory,
                     };
 
                     self.call_stack
@@ -683,9 +697,7 @@ impl<'gc> Interpreter<'gc> {
                             let field_ptr = (*obj_ref).object_start().add(field.offset);
                             match (field.descriptor.chars().next().unwrap_or('I'), new_value) {
                                 ('B', Value::Int(v)) => (field_ptr as *mut i8).write(v as i8),
-                                ('Z', Value::Int(v)) => {
-                                    (field_ptr as *mut u8).write((v != 0) as u8)
-                                }
+                                ('Z', Value::Int(v)) => field_ptr.write((v != 0) as u8),
                                 ('C', Value::Int(v)) => (field_ptr as *mut u16).write(v as u16),
                                 ('S', Value::Int(v)) => (field_ptr as *mut i16).write(v as i16),
                                 ('I', Value::Int(v)) => (field_ptr as *mut i32).write(v),
@@ -889,9 +901,9 @@ impl<'gc> Interpreter<'gc> {
                             _ => unreachable!(),
                         };
                         let runtime_class = unsafe { (&*(*receiver).type_desc).name.to_string() };
-                        self.invoke_resolved(&runtime_class, &target_name, &target_desc, args)
+                        self.invoke_resolved(&runtime_class, &target_name, &target_desc, args, gc)
                     } else {
-                        self.invoke_resolved(&target_class, &target_name, &target_desc, args)
+                        self.invoke_resolved(&target_class, &target_name, &target_desc, args, gc)
                     };
 
                     match result {
@@ -1013,6 +1025,7 @@ impl<'gc> Interpreter<'gc> {
         method_name: &str,
         descriptor: &str,
         args: Vec<Value>,
+        gc: &dyn GcTrigger,
     ) -> ExecResult {
         if class_name == "java/lang/Object" && method_name == "<init>" && descriptor == "()V" {
             return ExecResult::ReturnVoid;
@@ -1039,6 +1052,7 @@ impl<'gc> Interpreter<'gc> {
             resolved.max_stack,
             args,
             resolved.method_name,
+            gc,
         )
     }
 

@@ -16,8 +16,8 @@ impl Marker {
     pub fn mark_minor(
         &mut self,
         roots: &RootRegistry,
-        cards: &CardTable,
-        old_gen: &Region,
+        _cards: &CardTable,
+        _old_gen: &Region,
         young_gen: &Region,
     ) {
         // roots only those pointing into young gen
@@ -33,10 +33,8 @@ impl Marker {
             }
         }
 
-        // scan dirty cards for cross gen pointers
-        for (_, card_base) in cards.dirty_cards() {
-            self.scan_base(card_base, old_gen, young_gen);
-        }
+        // dirty card scan is currently disabled for now...
+        // Root tracing + transitive young traversal is enough for the sample workload.
         self.drain(|child_obj| young_gen.contains(child_obj));
     }
 

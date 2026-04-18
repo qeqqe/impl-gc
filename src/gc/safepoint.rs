@@ -19,6 +19,12 @@ pub struct SafepointCoordinator {
     resume_barrier: (Mutex<bool>, Condvar),
 }
 
+impl Default for SafepointCoordinator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SafepointCoordinator {
     pub fn new() -> Self {
         Self {
@@ -38,6 +44,10 @@ impl SafepointCoordinator {
     // remove mutator thread
     pub fn unregister_thread(&self) {
         self.thread_count.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    pub fn thread_count(&self) -> usize {
+        self.thread_count.load(Ordering::Relaxed)
     }
 
     /// sets the flag, mutator threads will see this in the next poll

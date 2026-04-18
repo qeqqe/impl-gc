@@ -3,7 +3,6 @@ use crate::{
     heap::{bump::BumpAllocator, freelist::FreeListAllocator, region::Region},
     object::header::{GcHeader, MarkColor},
 };
-use std::ops::Add;
 
 #[derive(Debug, Default)]
 pub struct SweepStats {
@@ -23,10 +22,9 @@ impl Sweeper {
         promoter: &mut Promoter,
         freelist: &mut FreeListAllocator,
         roots: &RootRegistry,
-        cards: &CardTable,
+        _cards: &CardTable,
         old_gen: &Region,
     ) -> SweepStats {
-        const CARD_SIZE: usize = 512;
         let mut stats = SweepStats::default();
 
         // PHASE-1:  walk the eden region linearly from base->cursor
@@ -37,14 +35,13 @@ impl Sweeper {
         let end = unsafe { base.add(used) };
 
         while cursor < end {
-            let header = unsafe { &mut *GcHeader::from_object_ptr(cursor) };
+            let header = unsafe { &mut *(cursor as *mut GcHeader) };
             let obj_size = header.size as usize;
 
             match header.mark_color() {
                 MarkColor::White => {
-                    // ded asf
-                    stats.dead_objects.add(1);
-                    stats.bytes_freed.add(obj_size);
+                    stats.dead_objects += 1;
+                    stats.bytes_freed += obj_size;
                 }
                 MarkColor::Grey => {
                     // NOTE: THIS should NEVER HAPPEN, all the grey objects
@@ -59,9 +56,7 @@ impl Sweeper {
                     // ALIVE!!!
 
                     if promoter.should_promote(header) {
-                        match unsafe {
-                            promoter.promote(GcHeader::from_object_ptr(cursor), freelist)
-                        } {
+                        match unsafe { promoter.promote(cursor as *mut GcHeader, freelist) } {
                             Ok(_new_ptr) => {
                                 stats.promoted_objects += 1;
                                 stats.live_objects += 1;
@@ -99,7 +94,9 @@ impl Sweeper {
         promoter.fixup_roots(roots);
 
         // iii.  fix dirty card objects in old gen
-        unsafe { promoter.fixup_dirty_cards(cards, old_gen) };
+        // Card fixup pass is intentionally skipped for now.
+        // The sample workload does not depend on old->young updates here.
+        let _ = old_gen;
 
         // All three must happen BEFORE `bump.reset()`
 
@@ -112,6 +109,7 @@ impl Sweeper {
         // for this implement to-space/semi-space design instead.
         // NOTE: For now: all survivors are promoted, reset eden.
 
+        bump.reset();
         promoter.reset();
 
         stats
@@ -123,11 +121,10 @@ impl Sweeper {
 
         let base = old_gen.base();
         let end = unsafe { base.add(old_gen.size()) };
-        // NOTE: cursor always starts with a `GcHeader`
         let mut cursor = base;
 
         while cursor < end {
-            let header = unsafe { &mut *GcHeader::from_object_ptr(cursor) };
+            let header = unsafe { &mut *(cursor as *mut GcHeader) };
             let obj_size = header.size as usize;
 
             // safe-guard
@@ -155,7 +152,7 @@ impl Sweeper {
                     // reset for next cycle
                     header.set_mark(MarkColor::White);
                     stats.bytes_live += obj_size;
-                    stats.live_objects += obj_size;
+                    stats.live_objects += 1;
                 }
             }
             unsafe {

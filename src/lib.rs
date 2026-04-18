@@ -15,7 +15,15 @@ pub mod object;
 
 #[cfg(test)]
 mod test {
-    use crate::heap::{bump, freelist, region};
+    use std::{fs, path::PathBuf};
+
+    use crate::{
+        classfile::ClassLoader,
+        gc::collector::Collector,
+        heap::{bump, freelist, region},
+        interpreter::{ExecResult, Interpreter, value::Value},
+        mutator::Mutator,
+    };
 
     // Region test
 
@@ -128,7 +136,7 @@ mod test {
     #[test]
     fn bump_initial_state() {
         let mut r = region::Region::new(4096).unwrap();
-        let bump = bump::BumpAllocator::new(&mut r);
+        let bump = bump::BumpAllocator::new(&r);
         assert_eq!(bump.used(), 0);
         assert_eq!(bump.remaining(), 4096);
     }
@@ -136,7 +144,7 @@ mod test {
     #[test]
     fn bump_single_alloc() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
         let ptr = bump.alloc(64, 8);
         assert!(ptr.is_some());
         assert!(bump.used() >= 64);
@@ -145,7 +153,7 @@ mod test {
     #[test]
     fn bump_alloc_returns_aligned_pointer() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
         let ptr = bump.alloc(32, 16).unwrap();
         assert_eq!(ptr.as_ptr() as usize % 16, 0);
     }
@@ -153,7 +161,7 @@ mod test {
     #[test]
     fn bump_alloc_high_alignment() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
         let ptr = bump.alloc(64, 256).unwrap();
         assert_eq!(ptr.as_ptr() as usize % 256, 0);
     }
@@ -161,7 +169,7 @@ mod test {
     #[test]
     fn bump_sequential_allocs_dont_overlap() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
 
         let a = bump.alloc(100, 8).unwrap();
         let b = bump.alloc(100, 8).unwrap();
@@ -176,7 +184,7 @@ mod test {
     #[test]
     fn bump_used_plus_remaining_equals_size() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
         bump.alloc(123, 8);
         bump.alloc(456, 16);
         assert_eq!(bump.used() + bump.remaining(), 4096);
@@ -185,7 +193,7 @@ mod test {
     #[test]
     fn bump_alloc_exact_fit() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
         // base is page-aligned so align=1 means no waste
         let ptr = bump.alloc(4096, 1);
         assert!(ptr.is_some());
@@ -195,7 +203,7 @@ mod test {
     #[test]
     fn bump_alloc_one_byte_over_returns_none() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
         let ptr = bump.alloc(4097, 1);
         assert!(ptr.is_none());
     }
@@ -205,7 +213,7 @@ mod test {
     #[test]
     fn bump_oom_returns_none() {
         let mut r = region::Region::new(128).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
         let ptr = bump.alloc(256, 8);
         assert!(ptr.is_none());
         // cursor should not have advanced
@@ -215,7 +223,7 @@ mod test {
     #[test]
     fn bump_oom_after_partial_fill() {
         let mut r = region::Region::new(256).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
         assert!(bump.alloc(200, 1).is_some());
         // only ~56 left, asking for 100 should fail
         assert!(bump.alloc(100, 1).is_none());
@@ -224,7 +232,7 @@ mod test {
     #[test]
     fn bump_zero_size_alloc() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
         // zero-size alloc — should return a valid aligned pointer without advancing
         let ptr = bump.alloc(0, 8);
         assert!(ptr.is_some());
@@ -234,7 +242,7 @@ mod test {
     #[test]
     fn bump_many_tiny_allocs() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
         let mut count = 0;
         while bump.alloc(1, 1).is_some() {
             count += 1;
@@ -247,7 +255,7 @@ mod test {
     #[test]
     fn bump_reset_restores_full_capacity() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
         bump.alloc(2048, 8);
         bump.reset();
         assert_eq!(bump.used(), 0);
@@ -257,7 +265,7 @@ mod test {
     #[test]
     fn bump_alloc_after_reset() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
         bump.alloc(4096, 1);
         assert!(bump.alloc(1, 1).is_none());
 
@@ -269,7 +277,7 @@ mod test {
     #[test]
     fn bump_write_after_reset_is_safe() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
 
         // first generation
         let p1 = bump.alloc(8, 8).unwrap();
@@ -292,7 +300,7 @@ mod test {
     #[test]
     fn bump_alignment_wastes_expected_space() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
 
         // alloc 1 byte with align=1 to push cursor off-alignment
         bump.alloc(1, 1);
@@ -309,7 +317,7 @@ mod test {
     #[test]
     fn bump_various_alignments() {
         let mut r = region::Region::new(4096).unwrap();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
 
         for align in [1, 2, 4, 8, 16, 32, 64, 128] {
             let ptr = bump.alloc(1, align).unwrap();
@@ -519,7 +527,7 @@ mod test {
         for align in [1, 2, 4, 8, 16, 32, 64] {
             let ptr = fl
                 .alloc(32, align)
-                .expect(&format!("alloc align={}", align));
+                .unwrap_or_else(|| panic!("alloc align={}", align));
             assert_eq!(ptr as usize % align, 0, "pointer not aligned to {}", align);
         }
     }
@@ -535,11 +543,8 @@ mod test {
         let block_size = 64;
 
         // alloc until OOM
-        loop {
-            match fl.alloc(block_size, 8) {
-                Some(ptr) => allocs.push((ptr, block_size)),
-                None => break,
-            }
+        while let Some(ptr) = fl.alloc(block_size, 8) {
+            allocs.push((ptr, block_size));
         }
         assert!(
             !allocs.is_empty(),
@@ -580,7 +585,7 @@ mod test {
     fn bump_allocated_pointer_is_inside_region() {
         let mut r = region::Region::new(4096).unwrap();
         let base = r.base();
-        let mut bump = bump::BumpAllocator::new(&mut r);
+        let mut bump = bump::BumpAllocator::new(&r);
 
         let ptr = bump.alloc(64, 8).unwrap();
         // manually check containment (we can't call r.contains while bump borrows it,
@@ -599,5 +604,162 @@ mod test {
 
         let ptr = fl.alloc(128, 8).unwrap() as usize;
         assert!(ptr >= base && ptr + 128 <= base + size);
+    }
+
+    fn sample_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("sample")
+    }
+
+    fn load_sample_classes(loader: &mut ClassLoader) -> Vec<String> {
+        let mut loaded = Vec::new();
+        let entries = fs::read_dir(sample_dir()).expect("sample directory should exist");
+
+        for entry in entries {
+            let path = entry.expect("valid directory entry").path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("class") {
+                continue;
+            }
+
+            let bytes = fs::read(&path).expect("class bytes should be readable");
+            let class_name = loader.load(&bytes).expect("class should load");
+            loaded.push(class_name);
+        }
+
+        loaded.sort();
+        loaded
+    }
+
+    fn expect_int(result: ExecResult) -> i32 {
+        match result {
+            ExecResult::ReturnValue(Value::Int(v)) => v,
+            ExecResult::Exception(e) => panic!("unexpected exception: {e}"),
+            ExecResult::OutOfMemory => panic!("unexpected out of memory"),
+            ExecResult::ReturnVoid => panic!("expected int return value, got void"),
+            ExecResult::ReturnValue(v) => panic!("expected int return value, got {:?}", v),
+        }
+    }
+
+    #[test]
+    fn runtime_sample_methods_match_expected_values() {
+        let mut loader = ClassLoader::default();
+        let loaded = load_sample_classes(&mut loader);
+        assert!(
+            loaded.iter().any(|name| name == "GcStressTest"),
+            "GcStressTest must be loaded from sample/"
+        );
+
+        let collector = Collector::new(4 * 1024 * 1024, 32 * 1024 * 1024);
+        let mutator = Mutator::new(
+            collector.tlab(),
+            collector.card_table(),
+            collector.young_region(),
+            collector.old_region(),
+            &collector.safepoint,
+        );
+        let mut interpreter = Interpreter::new(mutator, loader);
+
+        let (bytecode, max_locals, max_stack, method_name) = {
+            let class = interpreter
+                .loader
+                .get("GcStressTest")
+                .expect("GcStressTest must be available");
+            let method = class
+                .find_method("main", "([Ljava/lang/String;)V")
+                .expect("main method must exist");
+            (
+                method.bytecode.clone(),
+                method.max_locals,
+                method.max_stack,
+                method.name,
+            )
+        };
+
+        let result = interpreter.execute(
+            "GcStressTest".to_string(),
+            bytecode,
+            max_locals,
+            max_stack,
+            vec![Value::NULL],
+            method_name,
+            &collector,
+        );
+        assert!(matches!(result, ExecResult::ReturnVoid));
+
+        assert_eq!(
+            expect_int(interpreter.invoke_static(
+                "GcStressTest",
+                "testCounter",
+                "()I",
+                Vec::new(),
+                &collector,
+            )),
+            500
+        );
+        assert_eq!(
+            expect_int(interpreter.invoke_static(
+                "GcStressTest",
+                "gcPressure",
+                "()I",
+                Vec::new(),
+                &collector,
+            )),
+            10044
+        );
+        assert_eq!(
+            expect_int(interpreter.invoke_static(
+                "GcStressTest",
+                "testCounterMethods",
+                "()I",
+                Vec::new(),
+                &collector,
+            )),
+            75
+        );
+        assert_eq!(
+            expect_int(interpreter.invoke_static(
+                "GcStressTest",
+                "testCrossGenPointer",
+                "()I",
+                Vec::new(),
+                &collector,
+            )),
+            6
+        );
+    }
+
+    #[test]
+    fn runtime_forced_minor_gc_stress_loop() {
+        let mut loader = ClassLoader::default();
+        load_sample_classes(&mut loader);
+
+        let collector = Collector::new(32 * 1024, 8 * 1024 * 1024);
+        let mutator = Mutator::new(
+            collector.tlab(),
+            collector.card_table(),
+            collector.young_region(),
+            collector.old_region(),
+            &collector.safepoint,
+        );
+        let mut interpreter = Interpreter::new(mutator, loader);
+
+        for _ in 0..25 {
+            let value = expect_int(interpreter.invoke_static(
+                "GcStressTest",
+                "gcPressure",
+                "()I",
+                Vec::new(),
+                &collector,
+            ));
+            assert_eq!(value, 10044);
+        }
+
+        assert!(
+            collector.minor_collections() > 0,
+            "stress loop should trigger minor GC"
+        );
+        assert!(
+            collector.old_gen_used() > 0,
+            "survivor promotion should consume old generation bytes"
+        );
     }
 }

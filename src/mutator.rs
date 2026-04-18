@@ -1,4 +1,4 @@
-use std::sync::atomic::AtomicU8;
+use std::{cell::RefCell, rc::Rc, sync::atomic::AtomicU8};
 
 use crate::{
     gc::{
@@ -33,7 +33,7 @@ pub enum AllocResult {
 /// Result returned by `alloc()`. Handled by the interpreter loop.
 pub struct Mutator<'gc> {
     /// Owned by the mutator threads,
-    pub tlab: BumpAllocator,
+    pub tlab: Rc<RefCell<BumpAllocator>>,
 
     roots: RootRegistry,
 
@@ -47,7 +47,7 @@ pub struct Mutator<'gc> {
 
 impl<'gc> Mutator<'gc> {
     pub fn new(
-        tlab: BumpAllocator,
+        tlab: Rc<RefCell<BumpAllocator>>,
         card_table: &'gc CardTable,
         young_gen: &'gc Region,
         old_gen: &'gc Region,
@@ -82,10 +82,12 @@ impl<'gc> Mutator<'gc> {
     /// }
     /// ```
     pub fn alloc(&mut self, type_desc: &'static TypeDescriptor) -> AllocResult {
-        let total_size = type_desc.instance_size + std::mem::size_of::<GcHeader>();
         let align = std::mem::align_of::<GcHeader>();
+        let object_bytes = type_desc.instance_size + std::mem::size_of::<GcHeader>();
+        let total_size = (object_bytes + align - 1) & !(align - 1);
 
-        match self.tlab.alloc(total_size, align) {
+        let mut tlab = self.tlab.borrow_mut();
+        match tlab.alloc(total_size, align) {
             Some(raw) => {
                 // returns a pointer to the head of the gcheader
                 let header_ptr = raw.as_ptr() as *mut GcHeader;
@@ -104,7 +106,13 @@ impl<'gc> Mutator<'gc> {
 
                 let payload = unsafe { (*header_ptr).object_start() };
 
-                unsafe { std::ptr::write_bytes(payload, 0, type_desc.instance_size) };
+                unsafe {
+                    std::ptr::write_bytes(
+                        payload,
+                        0,
+                        total_size.saturating_sub(std::mem::size_of::<GcHeader>()),
+                    )
+                };
 
                 let gc_ptr = unsafe { GcPtr::from_raw(header_ptr) };
 
@@ -126,6 +134,10 @@ impl<'gc> Mutator<'gc> {
     ///   - new_value lives in young gen (cross-gen pointer = potential missed root)
     ///
     /// Writing null or a non-heap value: pass null for `new_value`, barrier no-ops
+    ///
+    /// # Safety
+    /// `holder` must point to a valid heap object, and `field_offset` must refer
+    /// to a writable reference slot inside that object layout.
     #[inline]
     pub unsafe fn write_barrier(
         &self,
@@ -134,7 +146,7 @@ impl<'gc> Mutator<'gc> {
         new_value: *mut GcHeader, // value being stored
     ) {
         unsafe {
-            let holder_obj = (*holder).object_start() as *mut u8;
+            let holder_obj = (*holder).object_start();
             let field_slot = holder_obj.add(field_offset) as *mut *mut GcHeader;
             *field_slot = new_value;
 
